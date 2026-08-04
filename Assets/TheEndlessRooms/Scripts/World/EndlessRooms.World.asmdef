@@ -1,0 +1,16 @@
+{
+    "name": "EndlessRooms.World",
+    "rootNamespace": "EndlessRooms.World",
+    "references": [
+        "EndlessRooms.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
