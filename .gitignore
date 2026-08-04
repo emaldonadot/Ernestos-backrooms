@@ -1,4 +1,8 @@
 
+# ===== Local tooling =====
+.claude/
+mono_crash.*
+
 # ===== Unity generated =====
 [Ll]ibrary/
 [Tt]emp/
