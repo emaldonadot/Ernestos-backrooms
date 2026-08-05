@@ -1,12 +1,10 @@
 {
-    "name": "EndlessRooms.UI",
-    "rootNamespace": "EndlessRooms.UI",
+    "name": "EndlessRooms.Map",
+    "rootNamespace": "EndlessRooms.Map",
     "references": [
         "EndlessRooms.Core",
-        "EndlessRooms.Player",
-        "EndlessRooms.Map",
         "EndlessRooms.Procedural",
-        "Unity.InputSystem"
+        "EndlessRooms.World"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

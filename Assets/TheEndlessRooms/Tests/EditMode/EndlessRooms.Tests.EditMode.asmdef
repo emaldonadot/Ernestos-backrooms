@@ -4,6 +4,7 @@
     "references": [
         "EndlessRooms.Core",
         "EndlessRooms.Procedural",
+        "EndlessRooms.Map",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

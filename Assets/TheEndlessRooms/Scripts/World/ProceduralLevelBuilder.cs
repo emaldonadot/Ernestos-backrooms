@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using EndlessRooms.Procedural;
 using UnityEngine;
@@ -34,6 +35,9 @@ namespace EndlessRooms.World
 
         public RoomGraph LastGraph => _lastGraph;
 
+        /// <summary>Raised once <see cref="BuildLevel"/> finishes instantiating, so consumers (e.g. the Map system) never see a partially-built graph.</summary>
+        public event Action<RoomGraph> LevelBuilt;
+
         private void Start()
         {
             if (_buildOnStart)
@@ -59,6 +63,15 @@ namespace EndlessRooms.World
             ClearInstantiatedChildren();
             InstantiateRooms();
             OpenConnectionsAndPlaceDoors();
+
+            LevelBuilt?.Invoke(_lastGraph);
+        }
+
+        /// <summary>World-space position of the entry room, for spawning the player there.</summary>
+        public Vector3 GetEntryWorldPosition()
+        {
+            RoomNode entryNode = _lastGraph.GetNode(_lastGraph.EntryNodeId);
+            return transform.TransformPoint(new Vector3(entryNode.GridPosition.x * _cellSize, 1f, entryNode.GridPosition.y * _cellSize));
         }
 
         private void ClearInstantiatedChildren()
@@ -92,6 +105,9 @@ namespace EndlessRooms.World
                 }
 
                 _instancesByNodeId[node.Id] = roomInstance;
+
+                var roomTrigger = instanceGo.GetComponent<RoomTrigger>();
+                roomTrigger?.Initialize(node.Id);
             }
         }
 
