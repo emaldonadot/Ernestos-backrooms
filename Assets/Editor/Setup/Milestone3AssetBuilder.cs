@@ -68,8 +68,9 @@ namespace EndlessRooms.EditorSetup
 
             var mapBootstrapGo = new GameObject("MapBootstrap");
             var mapBootstrap = mapBootstrapGo.AddComponent<MapBootstrap>();
-            new SerializedObject(mapBootstrap).FindProperty("_levelBuilder").objectReferenceValue = levelGo.GetComponent<ProceduralLevelBuilder>();
-            new SerializedObject(mapBootstrap).ApplyModifiedPropertiesWithoutUndo();
+            var mapBootstrapSo = new SerializedObject(mapBootstrap);
+            mapBootstrapSo.FindProperty("_levelBuilder").objectReferenceValue = levelGo.GetComponent<ProceduralLevelBuilder>();
+            mapBootstrapSo.ApplyModifiedPropertiesWithoutUndo();
 
             BuildInteractionPromptUi(interactionCaster);
             BuildMapUi(actionRefs);

@@ -22,8 +22,11 @@ namespace EndlessRooms.World
 
         private void OnTriggerEnter(Collider other)
         {
+            Debug.Log($"[RoomTrigger] '{name}' saw '{other.name}' (tag '{other.tag}') enter.", this);
+
             if (other.CompareTag("Player"))
             {
+                Debug.Log($"[RoomTrigger] Player entered room {RoomId}.", this);
                 GameEvents.RaiseRoomEntered(RoomId);
             }
         }

@@ -1179,7 +1179,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2a5803c9584272569ab57978fb6a484d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: EndlessRooms.Map::EndlessRooms.Map.MapBootstrap
-  _levelBuilder: {fileID: 0}
+  _levelBuilder: {fileID: 1481808456}
 --- !u!4 &656391622
 Transform:
   m_ObjectHideFlags: 0
