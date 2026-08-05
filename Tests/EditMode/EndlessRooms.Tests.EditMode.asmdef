@@ -1,0 +1,25 @@
+{
+    "name": "EndlessRooms.Tests.EditMode",
+    "rootNamespace": "EndlessRooms.Tests.EditMode",
+    "references": [
+        "EndlessRooms.Core",
+        "EndlessRooms.Procedural",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,17 @@
+{
+    "name": "EndlessRooms.UI",
+    "rootNamespace": "EndlessRooms.UI",
+    "references": [
+        "EndlessRooms.Core",
+        "EndlessRooms.Player"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
