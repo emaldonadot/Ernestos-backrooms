@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4734bb7ce83154a1fb9b6f3220ecd75e, type: 3}
+  m_Name: DeadEnd
+  m_EditorClassIdentifier: EndlessRooms.Procedural::EndlessRooms.Procedural.RoomDefinition
+  RoomId: DeadEnd
+  Category: 3
+  RoomPrefab: {fileID: 6141768097799635994, guid: 0d89b19fd546e9d4cb4a68c1c846b376, type: 3}
+  ConnectorSockets: []
+  AllowedNeighborCategories: 
+  Rarity: 0.5
+  DifficultyWeight: 1
+  IsMandatory: 0

@@ -27,6 +27,12 @@ namespace EndlessRooms.World
             _hinge = transform;
         }
 
+        /// <summary>Wires the hinge for doors added at runtime (e.g. by <see cref="ProceduralLevelBuilder"/>), where <see cref="Reset"/> never runs.</summary>
+        internal void Initialize(Transform hinge)
+        {
+            _hinge = hinge;
+        }
+
         private void Update()
         {
             float targetAngle = IsOpen ? _openAngle : 0f;

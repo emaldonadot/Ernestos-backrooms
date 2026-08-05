@@ -1,6 +1,8 @@
 # Unity Setup — Milestone 1
 
-The scripts, assembly definitions, and Input Actions asset for Milestone 1 are already committed under `Assets/TheEndlessRooms/` and `Tests/EditMode/`. This machine (the one that wrote the code) does not have the Unity Editor installed, so the steps below have not been run through the Editor yet — follow them on a machine with Unity installed (Windows, per the PRD's target platform) to bring the project up and build the test scene.
+> **Update:** Unity 6000.5.6f1 was subsequently installed in the dev sandbox and the project was bootstrapped headlessly (packages, URP, both test scenes) — see `Assets/Editor/Setup/`. The steps below are kept for reference / for setting the project up on another machine, but the project no longer needs them run from scratch.
+
+The scripts, assembly definitions, and Input Actions asset for Milestone 1 are already committed under `Assets/TheEndlessRooms/` (EditMode tests live at `Assets/TheEndlessRooms/Tests/EditMode/` — Unity only compiles assemblies located under `Assets/` or `Packages/`, so this cannot live at the repo root).
 
 ## 1. Create the Unity project in this repo folder
 

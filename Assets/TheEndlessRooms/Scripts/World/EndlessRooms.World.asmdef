@@ -2,7 +2,8 @@
     "name": "EndlessRooms.World",
     "rootNamespace": "EndlessRooms.World",
     "references": [
-        "EndlessRooms.Core"
+        "EndlessRooms.Core",
+        "EndlessRooms.Procedural"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

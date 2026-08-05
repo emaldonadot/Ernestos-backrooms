@@ -2,6 +2,10 @@
 
 Append-only log of decisions with dates and rationale. Revisit an entry by adding a new dated entry that supersedes it rather than editing history.
 
+## 2026-08-05 — Test assemblies must live under Assets/
+
+`Assets/TheEndlessRooms/Tests/EditMode/` (moved there from a repo-root `Tests/EditMode/`). Rationale: Unity's AssetDatabase only scans `Assets/` and `Packages/` — an asmdef outside those is invisible to the Editor with no error, just zero tests silently discovered. Caught while verifying Milestone 2's EditMode tests (`testcasecount="0"` with no compile error was the symptom). Any future test assembly must be created under `Assets/`.
+
 ## 2026-08-04 — Repository setup
 
 - **Repo name:** `Ernestos-backrooms`, **visibility:** private. Rationale: unreleased IP (story, creature designs, puzzles) should stay confidential during early development. User chose private explicitly.
