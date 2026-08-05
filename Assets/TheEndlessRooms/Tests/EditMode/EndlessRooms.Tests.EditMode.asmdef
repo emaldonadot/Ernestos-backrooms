@@ -5,6 +5,7 @@
         "EndlessRooms.Core",
         "EndlessRooms.Procedural",
         "EndlessRooms.Map",
+        "EndlessRooms.Puzzles",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

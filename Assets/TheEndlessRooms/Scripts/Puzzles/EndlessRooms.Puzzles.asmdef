@@ -1,11 +1,7 @@
 {
-    "name": "EndlessRooms.World",
-    "rootNamespace": "EndlessRooms.World",
-    "references": [
-        "EndlessRooms.Core",
-        "EndlessRooms.Procedural",
-        "EndlessRooms.Puzzles"
-    ],
+    "name": "EndlessRooms.Puzzles",
+    "rootNamespace": "EndlessRooms.Puzzles",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

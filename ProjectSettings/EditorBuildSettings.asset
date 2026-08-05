@@ -14,4 +14,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/TheEndlessRooms/Scenes/Milestone3_MapTestScene.unity
     guid: ed87fe0006357a5a1953a8bfc6834472
+  - enabled: 1
+    path: Assets/TheEndlessRooms/Scenes/Milestone4_PuzzleTestScene.unity
+    guid: 8544624e7913ec309b9af6054c9e0e23
   m_configObjects: {}

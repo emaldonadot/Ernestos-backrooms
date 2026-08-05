@@ -15,6 +15,9 @@ namespace EndlessRooms.Core
         /// <summary>Raised with a room's stable Guid when a player's collider enters it. Consumed by the Map system without Core depending on Map or Procedural.</summary>
         public static event Action<Guid> RoomEntered;
 
+        /// <summary>Raised once when the player reaches the exit condition.</summary>
+        public static event Action LevelCompleted;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -23,6 +26,11 @@ namespace EndlessRooms.Core
         public static void RaiseRoomEntered(Guid roomId)
         {
             RoomEntered?.Invoke(roomId);
+        }
+
+        public static void RaiseLevelCompleted()
+        {
+            LevelCompleted?.Invoke();
         }
     }
 }
