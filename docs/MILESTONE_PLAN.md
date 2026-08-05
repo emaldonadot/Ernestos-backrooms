@@ -81,8 +81,8 @@ This keeps the generation logic in `EndlessRooms.Procedural`, testable from `End
 
 | # | Milestone | Status |
 |---|---|---|
-| 1 | Project Foundation (folders, asmdefs, input, player movement, interaction interfaces, data definitions, test scene) | **In progress** |
-| 2 | Modular World (room prefabs, connectors, seed-based layout, connectivity validation, debug viz) | Not started |
+| 1 | Project Foundation (folders, asmdefs, input, player movement, interaction interfaces, data definitions, test scene) | Complete (PR #1) |
+| 2 | Modular World (room prefabs, connectors, seed-based layout, connectivity validation, debug viz) | **In progress** — see [milestone-2-modular-world.md](features/milestone-2-modular-world.md) |
 | 3 | Map System (discovery, Field Log rendering, pan/zoom, markers) | Not started |
 | 4 | Puzzle & Progression (puzzle framework, locked route, exit room) | Not started |
 | 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | Not started |

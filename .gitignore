@@ -2,6 +2,8 @@
 # ===== Local tooling =====
 .claude/
 mono_crash.*
+Assets/_Recovery/
+Assets/_Recovery.meta
 
 # ===== Unity generated =====
 [Ll]ibrary/
