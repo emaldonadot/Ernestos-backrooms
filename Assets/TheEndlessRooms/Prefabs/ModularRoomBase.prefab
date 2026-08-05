@@ -327,6 +327,8 @@ GameObject:
   m_Component:
   - component: {fileID: 2418431862463587213}
   - component: {fileID: 2386336997713618102}
+  - component: {fileID: 8297546041976806491}
+  - component: {fileID: 8443236926761030785}
   m_Layer: 0
   m_Name: ModularRoomBase
   m_TagString: Untagged
@@ -379,6 +381,39 @@ MonoBehaviour:
   _socketEast: {fileID: 5997924160477450539}
   _socketSouth: {fileID: 8875807914987214466}
   _socketWest: {fileID: 136942367285354275}
+--- !u!65 &8297546041976806491
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6141768097799635994}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 5.3999996, y: 2.6999998, z: 5.3999996}
+  m_Center: {x: 0, y: 1.5, z: 0}
+--- !u!114 &8443236926761030785
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6141768097799635994}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78098fa46e2e97f918845cee7260cecb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: EndlessRooms.World::EndlessRooms.World.RoomTrigger
 --- !u!1 &6243032651880469028
 GameObject:
   m_ObjectHideFlags: 0
