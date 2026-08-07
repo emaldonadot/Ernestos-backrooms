@@ -85,6 +85,24 @@ namespace EndlessRooms.World
             return transform.TransformPoint(new Vector3(entryNode.GridPosition.x * _cellSize, 1f, entryNode.GridPosition.y * _cellSize));
         }
 
+        /// <summary>
+        /// World-space position of any room by its graph node id, for anything that
+        /// needs to move toward a room without owning grid-to-world math itself —
+        /// Milestone 7's <c>AttendantController</c> uses this to convert a BFS path
+        /// over <see cref="RoomGraph.GetNeighborIds"/> into movement waypoints.
+        /// </summary>
+        public bool TryGetRoomWorldPosition(Guid nodeId, out Vector3 position)
+        {
+            if (_lastGraph == null || !_lastGraph.TryGetNode(nodeId, out RoomNode node))
+            {
+                position = default;
+                return false;
+            }
+
+            position = transform.TransformPoint(new Vector3(node.GridPosition.x * _cellSize, 1f, node.GridPosition.y * _cellSize));
+            return true;
+        }
+
         private void ClearInstantiatedChildren()
         {
             _instancesByNodeId.Clear();

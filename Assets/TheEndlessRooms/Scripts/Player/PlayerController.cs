@@ -37,6 +37,7 @@ namespace EndlessRooms.Player
 
         public Transform DetectionPoint => _cameraPivot != null ? _cameraPivot : transform;
         public float NoiseLevel { get; private set; }
+        public bool IsHidden { get; private set; }
 
         private void Awake()
         {
@@ -60,6 +61,7 @@ namespace EndlessRooms.Player
             _lookAction?.action.Enable();
             _sprintAction?.action.Enable();
             _crouchAction?.action.Enable();
+            GameEvents.PlayerHiddenChanged += OnPlayerHiddenChanged;
         }
 
         private void OnDisable()
@@ -68,6 +70,12 @@ namespace EndlessRooms.Player
             _lookAction?.action.Disable();
             _sprintAction?.action.Disable();
             _crouchAction?.action.Disable();
+            GameEvents.PlayerHiddenChanged -= OnPlayerHiddenChanged;
+        }
+
+        private void OnPlayerHiddenChanged(bool isHidden)
+        {
+            IsHidden = isHidden;
         }
 
         private void Update()

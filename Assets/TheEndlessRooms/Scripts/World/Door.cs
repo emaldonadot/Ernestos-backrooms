@@ -23,6 +23,15 @@ namespace EndlessRooms.World
         public bool IsLocked { get; private set; }
         public string SaveId => string.IsNullOrEmpty(_saveId) ? name : _saveId;
 
+        /// <summary>
+        /// Raised when a live interaction opens/closes this door — not when
+        /// <see cref="RestoreState"/> reapplies saved state on load, so loading a save
+        /// doesn't make every door in the level look like it was just opened to any
+        /// creature perception listening for this. Milestone 7's Attendant uses this for
+        /// its "investigates recently opened doors" archetype.
+        /// </summary>
+        public event Action<Door> DoorToggled;
+
         private void Reset()
         {
             _hinge = transform;
@@ -105,6 +114,7 @@ namespace EndlessRooms.World
         internal void SetOpen(bool isOpen)
         {
             IsOpen = isOpen;
+            DoorToggled?.Invoke(this);
         }
 
         internal void SetLocked(bool isLocked)

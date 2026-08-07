@@ -1,0 +1,19 @@
+{
+    "name": "EndlessRooms.AI",
+    "rootNamespace": "EndlessRooms.AI",
+    "references": [
+        "EndlessRooms.Core",
+        "EndlessRooms.Procedural",
+        "EndlessRooms.World",
+        "EndlessRooms.Player"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

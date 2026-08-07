@@ -18,6 +18,12 @@ namespace EndlessRooms.Core
         /// <summary>Raised once when the player reaches the exit condition.</summary>
         public static event Action LevelCompleted;
 
+        /// <summary>Raised when a <c>HidingSpot</c> is entered/exited. Every <see cref="IDetectable"/> implementation (PC and VR) mirrors this into its own <c>IsHidden</c> rather than HidingSpot (World) referencing the player rig (Player) directly.</summary>
+        public static event Action<bool> PlayerHiddenChanged;
+
+        /// <summary>Raised by Milestone 7's Attendant when it catches the player during Chase. <c>RespawnController</c> (Persistence) reloads the last checkpoint save in response.</summary>
+        public static event Action PlayerCaptured;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -31,6 +37,16 @@ namespace EndlessRooms.Core
         public static void RaiseLevelCompleted()
         {
             LevelCompleted?.Invoke();
+        }
+
+        public static void RaisePlayerHiddenChanged(bool isHidden)
+        {
+            PlayerHiddenChanged?.Invoke(isHidden);
+        }
+
+        public static void RaisePlayerCaptured()
+        {
+            PlayerCaptured?.Invoke();
         }
     }
 }

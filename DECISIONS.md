@@ -2,6 +2,12 @@
 
 Append-only log of decisions with dates and rationale. Revisit an entry by adding a new dated entry that supersedes it rather than editing history.
 
+## 2026-08-07 — Milestone 7 kickoff: PR #5 and PR #6 merged; chase/capture FX comfort decision
+
+PR #5 (Milestone 5: Persistence) and PR #6 (Milestone 6: VR Platform Support) were both merged into `main` on the user's explicit "please merge and continue" — confirmed via a follow-up question specifically for PR #5's previously-unverified `Door.OnEnable` save/load check (user confirmed they'd tested it). Milestone 7 (Horror Prototype) started immediately after per the user's "continue."
+
+**Chase/capture camera effects: identical on PC and VR**, not platform-split. Camera shake that doesn't match real head movement is a known VR nausea trigger, so the safer default would have been PC-only shake with non-camera cues (vignette/audio/haptics) on Quest — flagged to the user before building it, per the standing VR-UX-decision rule. **User chose identical shake on both platforms**, prioritizing consistent feel over the more comfort-conservative option. If this proves uncomfortable in practice on the headset, it's a config change (not a code change) to split it later — see `docs/features/milestone-7-horror-prototype.md`.
+
 ## 2026-08-07 — Milestone 6 implementation-time decisions (XRI rig, interaction wiring, XR Plug-in Management)
 
 Three judgment calls made while actually building Milestone 6, beyond what the design doc anticipated:
