@@ -20,4 +20,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/TheEndlessRooms/Scenes/Milestone5_PersistenceTestScene.unity
     guid: 56f9df7d1f5ca711ebf9a20314e41fad
-  m_configObjects: {}
+  - enabled: 1
+    path: Assets/TheEndlessRooms/Scenes/Milestone6_QuestTestScene.unity
+    guid: 73888e31f501f0c04b481a63d6ecf672
+  m_configObjects:
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: e01e0718560e92b5da5c4ff2aee2afcb, type: 2}

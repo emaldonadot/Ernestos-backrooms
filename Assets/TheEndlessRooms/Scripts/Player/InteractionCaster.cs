@@ -6,10 +6,13 @@ using UnityEngine.InputSystem;
 namespace EndlessRooms.Player
 {
     /// <summary>
-    /// Casts a ray from the player's view camera each frame to find the nearest
-    /// <see cref="IInteractable"/> in focus, and executes it on the Interact action.
-    /// Raises <see cref="FocusChanged"/> so UI (or anything else) can react without
-    /// this class knowing about the UI.
+    /// Casts a ray each frame to find the nearest <see cref="IInteractable"/> in
+    /// focus, and executes it on the Interact action. Raises <see cref="FocusChanged"/>
+    /// so UI (or anything else) can react without this class knowing about the UI.
+    /// The ray normally comes from the view camera (PC, mouse-look), but
+    /// <see cref="_rayOriginOverride"/> — set to a VR controller's transform — lets the
+    /// same component and the same <see cref="IInteractable"/> objects work unchanged
+    /// on Quest. Existing PC scenes are unaffected: the override defaults to unset.
     /// </summary>
     public sealed class InteractionCaster : MonoBehaviour
     {
@@ -18,7 +21,12 @@ namespace EndlessRooms.Player
         [SerializeField] private float _interactionRange = 2.5f;
         [SerializeField] private LayerMask _interactionMask = ~0;
 
+        [Tooltip("Optional. When set (e.g. to a VR controller's transform), this is used as the ray origin/direction instead of the view camera.")]
+        [SerializeField] private Transform _rayOriginOverride;
+
         private IInteractable _focusedInteractable;
+
+        private Transform RayOrigin => _rayOriginOverride != null ? _rayOriginOverride : _viewCamera?.transform;
 
         public event Action<IInteractable> FocusChanged;
 
@@ -53,12 +61,13 @@ namespace EndlessRooms.Player
 
         private IInteractable FindInteractableInView()
         {
-            if (_viewCamera == null)
+            Transform rayOrigin = RayOrigin;
+            if (rayOrigin == null)
             {
                 return null;
             }
 
-            var ray = new Ray(_viewCamera.transform.position, _viewCamera.transform.forward);
+            var ray = new Ray(rayOrigin.position, rayOrigin.forward);
             if (!Physics.Raycast(ray, out RaycastHit hit, _interactionRange, _interactionMask, QueryTriggerInteraction.Collide))
             {
                 return null;

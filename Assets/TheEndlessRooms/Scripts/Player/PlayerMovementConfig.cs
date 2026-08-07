@@ -10,10 +10,10 @@ namespace EndlessRooms.Player
     public sealed class PlayerMovementConfig : ScriptableObject
     {
         [Header("Movement")]
-        [Min(0f)] public float WalkSpeed = 3.2f;
-        [Min(0f)] public float SprintSpeed = 5.6f;
-        [Min(0f)] public float CrouchSpeed = 1.6f;
-        [Min(0f)] public float Acceleration = 18f;
+        [Min(0f)] public float WalkSpeed = 4.5f;
+        [Min(0f)] public float SprintSpeed = 8f;
+        [Min(0f)] public float CrouchSpeed = 2.2f;
+        [Min(0f)] public float Acceleration = 24f;
 
         [Header("Crouch")]
         [Min(0.1f)] public float StandingHeight = 1.8f;
