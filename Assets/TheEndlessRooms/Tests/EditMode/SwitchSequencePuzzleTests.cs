@@ -72,6 +72,37 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
+        public void RestoreProgress_ThenActivate_ContinuesCorrectly()
+        {
+            var puzzle = new SwitchSequencePuzzle(new List<int> { 2, 0, 1 });
+
+            // Simulate a save/load: a fresh puzzle instance restored to "already pulled switch 2."
+            puzzle.RestoreProgress(new List<int> { 2 }, isSolved: false);
+
+            Assert.AreEqual(1, puzzle.ProgressCount);
+            CollectionAssert.AreEqual(new[] { 2 }, puzzle.Progress);
+            Assert.IsFalse(puzzle.IsSolved);
+
+            puzzle.Activate(0);
+            puzzle.Activate(1);
+
+            Assert.IsTrue(puzzle.IsSolved);
+        }
+
+        [Test]
+        public void RestoreProgress_WithIsSolvedTrue_DoesNotRaiseSolved()
+        {
+            var puzzle = new SwitchSequencePuzzle(new List<int> { 0, 1 });
+            bool solvedRaised = false;
+            puzzle.Solved += () => solvedRaised = true;
+
+            puzzle.RestoreProgress(new List<int> { 0, 1 }, isSolved: true);
+
+            Assert.IsTrue(puzzle.IsSolved);
+            Assert.IsFalse(solvedRaised, "Restoring an already-solved state is not the same event as solving it live.");
+        }
+
+        [Test]
         public void GenerateSequence_IsDeterministicForASeed_AndIsAPermutation()
         {
             IReadOnlyList<int> first = SwitchSequencePuzzle.GenerateSequence(seed: 99, switchCount: 5);

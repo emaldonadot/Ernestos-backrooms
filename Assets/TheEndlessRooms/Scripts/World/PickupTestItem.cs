@@ -19,6 +19,22 @@ namespace EndlessRooms.World
 
         public string SaveId => string.IsNullOrEmpty(_saveId) ? name : _saveId;
 
+        private void OnEnable()
+        {
+            if (GameServices.TryGet<SaveableRegistry>(out var registry))
+            {
+                registry.Register(this);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (GameServices.TryGet<SaveableRegistry>(out var registry))
+            {
+                registry.Unregister(this);
+            }
+        }
+
         public string GetInteractionPrompt()
         {
             return $"Pick up {_itemName}";

@@ -94,6 +94,28 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
+        public void Generate_WithSameSeed_ProducesIdenticalNodeGuids()
+        {
+            // Persistence depends on this: reloading a save regenerates the world from
+            // its seed, and saved per-object state must reattach to the same room/door
+            // ids it was captured against.
+            RoomGraph first = RoomGraphGenerator.Generate(CreateSettings(42), seedOverride: 42);
+            RoomGraph second = RoomGraphGenerator.Generate(CreateSettings(42), seedOverride: 42);
+
+            var firstIdsByPosition = new System.Collections.Generic.Dictionary<Vector2Int, System.Guid>();
+            foreach (var node in first.Nodes)
+            {
+                firstIdsByPosition[node.GridPosition] = node.Id;
+            }
+
+            foreach (var node in second.Nodes)
+            {
+                Assert.IsTrue(firstIdsByPosition.TryGetValue(node.GridPosition, out System.Guid firstId), $"Second generation placed a room at {node.GridPosition} the first didn't.");
+                Assert.AreEqual(firstId, node.Id, $"Room at {node.GridPosition} got a different Guid on the second generation.");
+            }
+        }
+
+        [Test]
         public void Generate_NeverPlacesTwoNodesOnTheSameGridCell()
         {
             RoomGraph graph = RoomGraphGenerator.Generate(CreateSettings(7), seedOverride: 7);

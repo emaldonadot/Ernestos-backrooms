@@ -28,10 +28,36 @@ namespace EndlessRooms.World
             _hinge = transform;
         }
 
+        private void OnEnable()
+        {
+            if (GameServices.TryGet<SaveableRegistry>(out var registry))
+            {
+                registry.Register(this);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (GameServices.TryGet<SaveableRegistry>(out var registry))
+            {
+                registry.Unregister(this);
+            }
+        }
+
         /// <summary>Wires the hinge for doors added at runtime (e.g. by <see cref="ProceduralLevelBuilder"/>), where <see cref="Reset"/> never runs.</summary>
         internal void Initialize(Transform hinge)
         {
             _hinge = hinge;
+        }
+
+        /// <summary>
+        /// Overrides the default name-based <see cref="SaveId"/>. Every procedurally
+        /// placed door shares the GameObject name "DoorHinge", so without this every
+        /// door in a level would report the same SaveId and collide in save data.
+        /// </summary>
+        internal void SetSaveId(string saveId)
+        {
+            _saveId = saveId;
         }
 
         private void Update()
@@ -88,7 +114,7 @@ namespace EndlessRooms.World
 
         public object CaptureState()
         {
-            return new DoorState(IsOpen);
+            return new DoorState(IsOpen, IsLocked);
         }
 
         public void RestoreState(object state)
@@ -99,6 +125,7 @@ namespace EndlessRooms.World
             }
 
             IsOpen = doorState.IsOpen;
+            IsLocked = doorState.IsLocked;
             _currentAngle = IsOpen ? _openAngle : 0f;
         }
 
@@ -106,10 +133,12 @@ namespace EndlessRooms.World
         public struct DoorState
         {
             public bool IsOpen;
+            public bool IsLocked;
 
-            public DoorState(bool isOpen)
+            public DoorState(bool isOpen, bool isLocked)
             {
                 IsOpen = isOpen;
+                IsLocked = isLocked;
             }
         }
     }

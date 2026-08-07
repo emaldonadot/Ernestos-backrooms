@@ -120,6 +120,29 @@ namespace EndlessRooms.Map
             return removed > 0;
         }
 
+        /// <summary>
+        /// Sets an exact discovery state loaded from a save, bypassing
+        /// <see cref="MarkRoomEntered"/>'s neighbor-promotion logic — that logic is
+        /// only correct for live discovery, not for replaying a snapshot where a room
+        /// might be <see cref="RoomDiscoveryState.Glimpsed"/> without its "entered"
+        /// neighbor being restored yet.
+        /// </summary>
+        public void RestoreDiscoveryState(Guid roomId, RoomDiscoveryState state)
+        {
+            _discoveryStates[roomId] = state;
+        }
+
+        public void RestoreCurrentRoomId(Guid roomId)
+        {
+            CurrentRoomId = roomId;
+        }
+
+        /// <summary>Re-adds a mark with its original Id preserved, loaded from a save — <see cref="AddMark"/> always mints a new Id, which would break Remove-by-Id round-tripping.</summary>
+        public void RestoreMark(FieldMark mark)
+        {
+            _marks.Add(mark);
+        }
+
         public void Dispose()
         {
             GameEvents.RoomEntered -= MarkRoomEntered;

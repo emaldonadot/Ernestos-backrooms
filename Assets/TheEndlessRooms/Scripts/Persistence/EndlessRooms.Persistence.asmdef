@@ -1,0 +1,21 @@
+{
+    "name": "EndlessRooms.Persistence",
+    "rootNamespace": "EndlessRooms.Persistence",
+    "references": [
+        "EndlessRooms.Core",
+        "EndlessRooms.Procedural",
+        "EndlessRooms.World",
+        "EndlessRooms.Map",
+        "EndlessRooms.Puzzles",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

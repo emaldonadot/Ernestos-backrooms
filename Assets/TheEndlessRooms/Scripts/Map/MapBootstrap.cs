@@ -18,6 +18,23 @@ namespace EndlessRooms.Map
 
         private void Awake()
         {
+            EnsureInitialized();
+        }
+
+        /// <summary>
+        /// The actual setup logic, exposed publicly so headless Edit-mode tooling can
+        /// call it directly — batch-mode Unity without a Play session doesn't reliably
+        /// run Awake for scene-resident objects. Real gameplay always goes through
+        /// Awake. Safe to call more than once: re-registers a fresh service rather than
+        /// leaving a stale one from a previous call.
+        /// </summary>
+        public void EnsureInitialized()
+        {
+            if (_service != null)
+            {
+                return;
+            }
+
             _service = new FieldLogService();
             GameServices.Register(_service);
 

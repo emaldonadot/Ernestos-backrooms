@@ -114,5 +114,41 @@ namespace EndlessRooms.Tests.EditMode
             Assert.IsTrue(removed);
             Assert.AreEqual(0, _service.Marks.Count);
         }
+
+        [Test]
+        public void RestoreDiscoveryState_SetsExactStateWithoutNeighborPromotion()
+        {
+            // Simulates a save/load: a fresh service, told directly that B was
+            // Glimpsed, without A ever having been marked Entered first.
+            _service.RestoreDiscoveryState(_roomB.Id, RoomDiscoveryState.Glimpsed);
+
+            var known = KnownRoomsById();
+            Assert.AreEqual(RoomDiscoveryState.Glimpsed, known[_roomB.Id].State);
+            Assert.IsFalse(known.ContainsKey(_roomA.Id), "Restoring one room's state must not promote unrelated neighbors.");
+        }
+
+        [Test]
+        public void RestoreMark_PreservesTheOriginalMarkId()
+        {
+            var originalId = System.Guid.NewGuid();
+            var mark = new FieldMark(originalId, _roomA.Id, Vector2.one, FieldMarkType.Secret, "loose panel", "local");
+
+            _service.RestoreMark(mark);
+
+            Assert.AreEqual(1, _service.Marks.Count);
+            Assert.AreEqual(originalId, _service.Marks[0].Id);
+
+            // A restored mark must still be removable by the id it was saved with.
+            Assert.IsTrue(_service.RemoveMark(originalId));
+        }
+
+        [Test]
+        public void RestoreCurrentRoomId_SetsCurrentRoomWithoutMarkingItDiscovered()
+        {
+            _service.RestoreCurrentRoomId(_roomA.Id);
+
+            Assert.AreEqual(_roomA.Id, _service.CurrentRoomId);
+            Assert.IsFalse(KnownRoomsById().ContainsKey(_roomA.Id), "Restoring the current room id alone must not implicitly discover it — discovery state is restored separately.");
+        }
     }
 }

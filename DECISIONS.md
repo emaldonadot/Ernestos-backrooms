@@ -2,6 +2,12 @@
 
 Append-only log of decisions with dates and rationale. Revisit an entry by adding a new dated entry that supersedes it rather than editing history.
 
+## 2026-08-07 — MonoBehaviour Awake/OnEnable/Start/Update never run outside Play mode
+
+Discovered while verifying Milestone 5: `GameBootstrap.Awake()`, `MapBootstrap.Awake()`, `PuzzleGateController.Awake()`, and `Door`/`PickupTestItem`'s `OnEnable()` all silently never ran — not just in a bare `-executeMethod` script, but even inside real EditMode tests (`-runTests -testPlatform EditMode`) using `AddComponent`. Root cause: without `[ExecuteAlways]`/`[ExecuteInEditMode]`, Unity only calls `Awake`/`OnEnable`/`Start`/`Update` in an actual Play session — never from Edit mode, regardless of whether the object came from scene deserialization, `Instantiate`, or `AddComponent`, and regardless of whether the calling context is a bare script, EditMode tests, or plain scene loading. Plain C# objects (not `MonoBehaviour`) are unaffected — their constructors always run normally, which is why `FieldLogService` (a plain class) worked fine in the same headless scripts while `MonoBehaviour`-based bootstrap components didn't.
+
+**How to apply:** any `MonoBehaviour` whose `Awake`/`OnEnable` does one-time setup that headless Editor tooling needs to trigger should expose that logic as a public method too (e.g. `GameBootstrap.EnsureRegistered()`, `MapBootstrap.EnsureInitialized()`, `PuzzleGateController.EnsureInitialized()`) — call it from `Awake` for real gameplay, and call it directly from Editor scripts/tests that never enter Play mode. Don't write EditMode tests asserting on `Awake`/`OnEnable` side effects — they will never pass; test the plain-C# logic those methods call into instead (see `SaveableRegistryTests`, which tests `SaveableRegistry` directly rather than asserting `Door.OnEnable` registers it). Genuine Play-mode-only wiring (e.g. `Door.OnEnable` calling `SaveableRegistry.Register`) has to be confirmed by a human in a real Play session — headless tooling cannot verify it.
+
 ## 2026-08-05 — Test assemblies must live under Assets/
 
 `Assets/TheEndlessRooms/Tests/EditMode/` (moved there from a repo-root `Tests/EditMode/`). Rationale: Unity's AssetDatabase only scans `Assets/` and `Packages/` — an asmdef outside those is invisible to the Editor with no error, just zero tests silently discovered. Caught while verifying Milestone 2's EditMode tests (`testcasecount="0"` with no compile error was the symptom). Any future test assembly must be created under `Assets/`.

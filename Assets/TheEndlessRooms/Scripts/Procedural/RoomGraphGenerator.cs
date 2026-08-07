@@ -12,7 +12,11 @@ namespace EndlessRooms.Procedural
     /// category-compatible (turning some branches into loops/junctions). Every random
     /// choice goes through a <see cref="System.Random"/> seeded from
     /// <see cref="RoomGraphGenerationSettings.Seed"/> — never <c>UnityEngine.Random</c> —
-    /// so the same seed always produces the same graph.
+    /// so the same seed always produces the same graph. Node <see cref="Guid"/>s are
+    /// also drawn from that same seeded stream (see <see cref="NextGuid"/>) rather than
+    /// <see cref="Guid.NewGuid"/>, so the same seed reproduces the same room/door
+    /// identities too — required for save data to reattach to the right rooms after a
+    /// reload regenerates the world from scratch.
     /// </summary>
     public static class RoomGraphGenerator
     {
@@ -46,7 +50,7 @@ namespace EndlessRooms.Procedural
             var graph = new RoomGraph();
             var occupied = new Dictionary<Vector2Int, Guid>();
 
-            RoomNode entry = PlaceNode(graph, occupied, settings.EntryDefinition, Vector2Int.zero);
+            RoomNode entry = PlaceNode(graph, occupied, rng, settings.EntryDefinition, Vector2Int.zero);
             graph.SetEntry(entry.Id);
 
             int criticalPathRooms = Math.Max(2, settings.RoomCount / 2);
@@ -93,12 +97,20 @@ namespace EndlessRooms.Procedural
             return graph;
         }
 
-        private static RoomNode PlaceNode(RoomGraph graph, Dictionary<Vector2Int, Guid> occupied, RoomDefinition definition, Vector2Int position)
+        private static RoomNode PlaceNode(RoomGraph graph, Dictionary<Vector2Int, Guid> occupied, System.Random rng, RoomDefinition definition, Vector2Int position)
         {
-            var node = new RoomNode(Guid.NewGuid(), definition, position);
+            var node = new RoomNode(NextGuid(rng), definition, position);
             graph.AddNode(node);
             occupied[position] = node.Id;
             return node;
+        }
+
+        /// <summary>Draws a Guid from the seeded stream instead of <see cref="Guid.NewGuid"/> so it reproduces deterministically for a given seed.</summary>
+        private static Guid NextGuid(System.Random rng)
+        {
+            var bytes = new byte[16];
+            rng.NextBytes(bytes);
+            return new Guid(bytes);
         }
 
         private static bool TryPlaceNeighbor(
@@ -127,7 +139,7 @@ namespace EndlessRooms.Procedural
                 }
 
                 RoomDefinition chosen = compatible[rng.Next(compatible.Count)];
-                placed = PlaceNode(graph, occupied, chosen, targetPosition);
+                placed = PlaceNode(graph, occupied, rng, chosen, targetPosition);
                 graph.AddConnection(new RoomConnection(from.Id, placed.Id, direction));
                 return true;
             }
@@ -159,7 +171,7 @@ namespace EndlessRooms.Procedural
                         continue;
                     }
 
-                    exitNode = PlaceNode(graph, occupied, exitDefinition, targetPosition);
+                    exitNode = PlaceNode(graph, occupied, rng, exitDefinition, targetPosition);
                     graph.AddConnection(new RoomConnection(candidate.Id, exitNode.Id, direction));
                     return true;
                 }
