@@ -20,6 +20,7 @@ namespace EndlessRooms.World
         private float _currentAngle;
 
         public bool IsOpen { get; private set; }
+        public bool IsLocked { get; private set; }
         public string SaveId => string.IsNullOrEmpty(_saveId) ? name : _saveId;
 
         private void Reset()
@@ -56,6 +57,12 @@ namespace EndlessRooms.World
 
         public void Interact(InteractionContext context)
         {
+            if (IsLocked)
+            {
+                Debug.Log($"'{name}' won't budge — something is blocking the mechanism.", this);
+                return;
+            }
+
             var command = new ToggleDoorCommand(this);
 
             if (GameServices.TryGet<WorldCommandExecutor>(out var executor))
@@ -72,6 +79,11 @@ namespace EndlessRooms.World
         internal void SetOpen(bool isOpen)
         {
             IsOpen = isOpen;
+        }
+
+        internal void SetLocked(bool isLocked)
+        {
+            IsLocked = isLocked;
         }
 
         public object CaptureState()

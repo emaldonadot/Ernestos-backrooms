@@ -34,6 +34,10 @@ namespace EndlessRooms.World
         private readonly Dictionary<System.Guid, RoomInstance> _instancesByNodeId = new();
 
         public RoomGraph LastGraph => _lastGraph;
+        public int Seed => _seed;
+
+        /// <summary>The door on the connection leading to the exit room, always set once <see cref="BuildLevel"/> completes — <see cref="RoomGraphValidator"/> guarantees the exit is reachable, so a connection touching it always exists.</summary>
+        public Door ExitDoor { get; private set; }
 
         /// <summary>Raised once <see cref="BuildLevel"/> finishes instantiating, so consumers (e.g. the Map system) never see a partially-built graph.</summary>
         public event Action<RoomGraph> LevelBuilt;
@@ -77,6 +81,7 @@ namespace EndlessRooms.World
         private void ClearInstantiatedChildren()
         {
             _instancesByNodeId.Clear();
+            ExitDoor = null;
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 Destroy(transform.GetChild(i).gameObject);
@@ -108,7 +113,22 @@ namespace EndlessRooms.World
 
                 var roomTrigger = instanceGo.GetComponent<RoomTrigger>();
                 roomTrigger?.Initialize(node.Id);
+
+                if (node.Id == _lastGraph.ExitNodeId)
+                {
+                    SpawnExitPoint(instanceGo.transform);
+                }
             }
+        }
+
+        private static void SpawnExitPoint(Transform roomTransform)
+        {
+            GameObject exitGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            exitGo.name = "ExitPoint";
+            exitGo.transform.SetParent(roomTransform, false);
+            exitGo.transform.localPosition = new Vector3(0f, 1f, 0f);
+            exitGo.transform.localScale = Vector3.one * 0.6f;
+            exitGo.AddComponent<ExitPoint>();
         }
 
         private void OpenConnectionsAndPlaceDoors()
@@ -125,11 +145,17 @@ namespace EndlessRooms.World
                 fromInstance.OpenWall(connection.FromDirection);
                 toInstance.OpenWall(toDirection);
 
-                PlaceDoor(fromInstance.transform.position, toInstance.transform.position, connection.FromDirection);
+                Door door = PlaceDoor(fromInstance.transform.position, toInstance.transform.position, connection.FromDirection);
+
+                bool touchesExit = connection.FromId == _lastGraph.ExitNodeId || connection.ToId == _lastGraph.ExitNodeId;
+                if (touchesExit && ExitDoor == null)
+                {
+                    ExitDoor = door;
+                }
             }
         }
 
-        private void PlaceDoor(Vector3 fromRoomPosition, Vector3 toRoomPosition, Direction fromDirection)
+        private Door PlaceDoor(Vector3 fromRoomPosition, Vector3 toRoomPosition, Direction fromDirection)
         {
             Vector3 boundaryPoint = (fromRoomPosition + toRoomPosition) / 2f;
 
@@ -153,6 +179,7 @@ namespace EndlessRooms.World
 
             var door = hinge.AddComponent<Door>();
             door.Initialize(hinge.transform);
+            return door;
         }
 
         private void OnDrawGizmos()
