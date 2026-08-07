@@ -50,6 +50,13 @@ namespace EndlessRooms.World
             }
         }
 
+        /// <summary>Rebuilds using an explicit seed instead of the Inspector-configured one — how <c>SaveService.Load</c> regenerates a saved world.</summary>
+        public void BuildLevel(int seedOverride)
+        {
+            _seed = seedOverride;
+            BuildLevel();
+        }
+
         public void BuildLevel()
         {
             var settings = new RoomGraphGenerationSettings
@@ -84,7 +91,18 @@ namespace EndlessRooms.World
             ExitDoor = null;
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
-                Destroy(transform.GetChild(i).gameObject);
+                GameObject child = transform.GetChild(i).gameObject;
+
+                // Destroy() is Play-mode only; editor tooling (headless verification,
+                // an eventual "regenerate" button) calls BuildLevel in Edit mode too.
+                if (Application.isPlaying)
+                {
+                    Destroy(child);
+                }
+                else
+                {
+                    DestroyImmediate(child);
+                }
             }
         }
 
@@ -146,6 +164,7 @@ namespace EndlessRooms.World
                 toInstance.OpenWall(toDirection);
 
                 Door door = PlaceDoor(fromInstance.transform.position, toInstance.transform.position, connection.FromDirection);
+                door.SetSaveId($"Door_{connection.FromId}_{connection.ToId}");
 
                 bool touchesExit = connection.FromId == _lastGraph.ExitNodeId || connection.ToId == _lastGraph.ExitNodeId;
                 if (touchesExit && ExitDoor == null)
