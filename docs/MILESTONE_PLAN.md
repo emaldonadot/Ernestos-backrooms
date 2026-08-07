@@ -9,7 +9,7 @@ This document is the durable, in-repo record of the approved architecture and mi
 **Premise:** The player is a night-shift employee of the fictional Aldermere Business Park who takes a service stairwell during a power outage and never reaches the ground floor again. Evidence that the space was once a real office complex (work orders, inspection tags, PA announcements, personnel logs) is everywhere, but the architecture has clearly kept building itself long after anyone was maintaining it. The mystery: who or what is still doing the maintenance.
 
 **Original creatures:**
-- **The Attendant** — territorial per-Sector patroller; investigates recently opened doors and disturbed noise. First prototype creature (Milestone 6).
+- **The Attendant** — territorial per-Sector patroller; investigates recently opened doors and disturbed noise. First prototype creature (Milestone 7).
 - **The Boarder** *(later, rare)* — passive mimic that holds still like a person/furniture and only advances while unobserved.
 
 **Map terminology:** the player-built map is the **Field Log**; personal annotations are **Field Marks**.
@@ -26,7 +26,7 @@ Assets/
       World/           (asmdef: EndlessRooms.World)        - room/door/lock runtime behaviors
       Map/             (asmdef: EndlessRooms.Map)          - Field Log discovery + rendering
       Puzzles/         (asmdef: EndlessRooms.Puzzles)
-      AI/              (asmdef: EndlessRooms.AI)           - creature framework (from Milestone 6)
+      AI/              (asmdef: EndlessRooms.AI)           - creature framework (from Milestone 7)
       Persistence/     (asmdef: EndlessRooms.Persistence)  - save/load
       UI/              (asmdef: EndlessRooms.UI)
       Multiplayer/     (asmdef: EndlessRooms.Multiplayer.Abstractions) - interfaces only, no netcode dep yet
@@ -50,7 +50,7 @@ Tests/
 | World | Runtime door/lock/switch behavior, executes world commands | `Door`, `Lock`, `WorldCommandExecutor` |
 | Map | Field Log discovery state + rendering | `FieldLogService`, `FieldLogView`, `FieldMark` |
 | Puzzles | Modular puzzle framework, seed-derived solutions | puzzle interfaces + events (Milestone 4) |
-| AI | Creature perception/behavior framework | (Milestone 6) |
+| AI | Creature perception/behavior framework | (Milestone 7) |
 | Persistence | Save/load, versioned save data | (Milestone 5) |
 | UI | HUD, prompts, menus, map screen | uGUI-based views |
 | Multiplayer.Abstractions | Command routing/ownership seams for future netcode | `IWorldCommand` consumers, stable `Guid` IDs |
@@ -77,6 +77,16 @@ This keeps the generation logic in `EndlessRooms.Procedural`, testable from `End
 - Persistent objects (rooms, doors, items, puzzles) get stable `Guid`s at generation/placement time, reusable later as network identities.
 - Generation is deterministic and `UnityEngine.Random`-free so future co-op clients reproduce identical layouts from a shared seed.
 
+## Dual-Platform Architecture (PC + Quest 2/3)
+
+Added Milestone 6. The same principle that keeps co-op cheap keeps VR cheap: gameplay logic never depended on *how* input arrived or *how* the world was rendered.
+
+- `ProceduralLevelBuilder`, `Door`/`PuzzleSwitch`/`ExitPoint`, `SwitchSequencePuzzle`, `FieldLogService`, and `EndlessRooms.Persistence` are identical on both platforms — none of it references a camera, a keyboard, or a canvas.
+- Two player rigs exist side by side: PC's `PlayerController` (mouse-look + keyboard) is unchanged; a new Quest rig (XR Origin + XR Interaction Toolkit locomotion) is additive, not a replacement.
+- `InteractionCaster` gained one optional field — a ray-origin `Transform` override — so a VR controller can drive the exact same `IInteractable`/`GameEvents` path PC already uses. No `IInteractable` implementation (`Door`, `PuzzleSwitch`, `ExitPoint`, `PickupTestItem`) changed.
+- UI components (`InteractionPromptUI`, `FieldLogView`, `FieldMarkerPanel`, `LevelCompleteUI`) are shared; only the canvas render mode (Screen Space Overlay on PC, World Space on Quest) and layout differ per scene.
+- Quest 2 is the performance floor for anything Quest-facing — Quest 3 headroom is a bonus, not something later content should assume.
+
 ## Milestone Breakdown
 
 | # | Milestone | Status |
@@ -85,9 +95,10 @@ This keeps the generation logic in `EndlessRooms.Procedural`, testable from `End
 | 2 | Modular World (room prefabs, connectors, seed-based layout, connectivity validation, debug viz) | Complete (PR #2) — see [milestone-2-modular-world.md](features/milestone-2-modular-world.md) |
 | 3 | Map System (discovery, Field Log rendering, pan/zoom, markers) | Complete (PR #3) — see [milestone-3-map-system.md](features/milestone-3-map-system.md) |
 | 4 | Puzzle & Progression (puzzle framework, locked route, exit room) | Complete (PR #4) — see [milestone-4-puzzle-progression.md](features/milestone-4-puzzle-progression.md) |
-| 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | Complete (PR #5) — see [milestone-5-persistence.md](features/milestone-5-persistence.md) |
-| 6 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | **Awaiting go-ahead** — stopped per PRD process pending review of PR #5 |
-| 7 | Expanded Vertical Slice (variety, landmark room, secret room, storytelling, polish, playtesting) | Not started |
+| 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | PR #5 open, not yet merged — needs your F5/F9 Play-mode check (`Door.OnEnable` can't be verified headlessly) — see [milestone-5-persistence.md](features/milestone-5-persistence.md) |
+| 6 | VR Platform Support (Android/OpenXR/XRI setup, Quest rig, world-space UI, dual PC+Quest 2/3) | **In progress** — see [milestone-6-vr-platform-support.md](features/milestone-6-vr-platform-support.md) |
+| 7 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | Not started |
+| 8 | Expanded Vertical Slice (variety, landmark room, secret room, storytelling, polish, playtesting) | Not started |
 | — | Online Co-op (future) | Not started — architecture prepared, no networking package added yet |
 
 Per the PRD's explicit process, each milestone after the current one requires user confirmation before implementation begins.

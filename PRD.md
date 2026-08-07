@@ -24,12 +24,21 @@ Create an atmospheric experience that produces:
 The experience should be frightening because of atmosphere, uncertainty, sound, isolation, and intelligent threats—not because it constantly relies on jump scares.
 
 ## 3. Target Platform
-Initial platform:
+
+**Updated 2026-08-07 (Milestone 6):** the initial platform target is now dual: Windows PC (keyboard and mouse) and Meta Quest VR (Quest 2 and Quest 3, standalone, via OpenXR). This supersedes the original PC-only framing below. Quest 2 is the performance floor — anything that runs acceptably on Quest 2 runs on Quest 3 with headroom to spare, but not the reverse, so Quest 2 governs lighting/rendering/complexity budgets for any Quest-facing content. See `docs/features/milestone-6-vr-platform-support.md` for the technical approach (parallel input/camera rigs sharing all gameplay logic — procedural generation, puzzles, map data, persistence — unchanged across both platforms).
+
+Initial platform (original, PC-only framing — see above for the current dual target):
 
 * Windows PC.
 * Keyboard and mouse.
 * Unity 3D using a current stable LTS release.
 * C# scripts.
+
+Meta Quest platform (added Milestone 6):
+
+* Meta Quest 2 and Quest 3, standalone (Android/Horizon OS), via OpenXR.
+* Quest Touch Plus controllers for locomotion and interaction (hand tracking not required for the MVP).
+* Same Unity project, same gameplay/world/puzzle/persistence systems as PC — only the player rig, interaction ray source, and UI presentation (world-space instead of screen-space) differ per platform.
 
 Possible later platforms:
 
@@ -322,6 +331,8 @@ The visual style should be:
 
 Use modular environment kits, material variations, decals, props, lighting profiles, and post-processing. Do not depend on expensive assets during the prototype. Use simple original placeholder geometry until systems are validated.
 
+**Quest note (Milestone 6):** Quest 2 is the performance floor for any Quest-facing content — real-time shadows, volumetric fog, and heavy post-processing stacks that are fine on PC need lighter (often baked-lighting) equivalents on Quest. This mostly affects later-milestone visual polish (Milestone 7), not the current grey-box test scenes.
+
 ## 17. User Interface
 Initial interface:
 
@@ -347,6 +358,8 @@ Accessibility and settings should eventually include:
 * Reduced camera motion.
 * Color-independent map markers.
 * Remappable controls.
+
+**Quest note (Milestone 6):** every screen-space UI (interaction prompt, map/marker panel, level-complete screen) needs a world-space equivalent for VR — Screen Space Overlay canvases don't render correctly in stereo. The underlying UI logic/components are shared across both platforms; only the canvas render mode and layout differ.
 
 ## 18. Saving and Loading
 The save system should preserve:
@@ -406,6 +419,8 @@ Architecture requirements:
 * Do not add third-party packages without explaining why they are needed.
 
 All gameplay actions that may eventually be networked should have clear ownership and authoritative-state boundaries.
+
+**Quest note (Milestone 6):** the PC/Quest split follows the same "separate input from character actions" principle Section 20 already requires for co-op. `ProceduralLevelBuilder`, `Door`/`PuzzleSwitch`/`ExitPoint`, `SwitchSequencePuzzle`, `FieldLogService`, and the persistence layer are unchanged across both platforms — only the player rig (mouse-look vs. head-tracked camera + controller locomotion) and the interaction ray source are platform-specific, and `IInteractable`/`GameEvents` already decouple gameplay objects from *how* they're targeted, so this needed no rework of already-shipped systems.
 
 ## 20. Co-op Readiness
 Even during single-player development:
@@ -514,7 +529,15 @@ Do not implement these during the first prototype:
 * Save puzzle, door, item, and marker states.
 * Load and reconstruct the world correctly.
 
-### Milestone 6: Horror Prototype
+### Milestone 6: VR Platform Support (added 2026-08-07)
+
+* Install and configure Android Build Support, OpenXR, XR Plug-in Management, and XR Interaction Toolkit.
+* Add a Quest-specific player rig (head-tracked camera, controller-driven locomotion) alongside the existing PC rig — not replacing it.
+* Make the interaction system's ray source platform-agnostic (camera on PC, controller on Quest) without changing any `IInteractable` object.
+* Add world-space UI variants for the interaction prompt, map/marker panel, and level-complete screen.
+* Produce a Quest build/deploy/test reference doc.
+
+### Milestone 7: Horror Prototype
 
 * Add one creature.
 * Add perception, investigation, chase, and search states.
@@ -522,7 +545,7 @@ Do not implement these during the first prototype:
 * Add capture and restart behavior.
 * Add ambient and directional audio.
 
-### Milestone 7: Expanded Vertical Slice
+### Milestone 8: Expanded Vertical Slice
 
 * Improve procedural variety.
 * Add a landmark room.
