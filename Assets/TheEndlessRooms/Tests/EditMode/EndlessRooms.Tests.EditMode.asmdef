@@ -8,6 +8,7 @@
         "EndlessRooms.Puzzles",
         "EndlessRooms.World",
         "EndlessRooms.Persistence",
+        "EndlessRooms.AI",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

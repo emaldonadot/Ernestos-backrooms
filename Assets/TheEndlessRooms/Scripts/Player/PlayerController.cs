@@ -37,6 +37,7 @@ namespace EndlessRooms.Player
 
         public Transform DetectionPoint => _cameraPivot != null ? _cameraPivot : transform;
         public float NoiseLevel { get; private set; }
+        public bool IsHidden { get; private set; }
 
         private void Awake()
         {
@@ -60,6 +61,7 @@ namespace EndlessRooms.Player
             _lookAction?.action.Enable();
             _sprintAction?.action.Enable();
             _crouchAction?.action.Enable();
+            GameEvents.PlayerHiddenChanged += OnPlayerHiddenChanged;
         }
 
         private void OnDisable()
@@ -68,6 +70,12 @@ namespace EndlessRooms.Player
             _lookAction?.action.Disable();
             _sprintAction?.action.Disable();
             _crouchAction?.action.Disable();
+            GameEvents.PlayerHiddenChanged -= OnPlayerHiddenChanged;
+        }
+
+        private void OnPlayerHiddenChanged(bool isHidden)
+        {
+            IsHidden = isHidden;
         }
 
         private void Update()
@@ -107,6 +115,18 @@ namespace EndlessRooms.Player
 
         private void HandleMovement()
         {
+            if (IsHidden)
+            {
+                // A hiding spot should actually hide you — otherwise there's nothing
+                // stopping you from stepping right back out while still flagged as
+                // concealed. Freezes horizontal movement entirely; look is untouched
+                // so you can still peek around from a fixed spot.
+                _currentVelocity.x = 0f;
+                _currentVelocity.z = 0f;
+                NoiseLevel = 0f;
+                return;
+            }
+
             Vector2 moveInput = _moveAction != null ? _moveAction.action.ReadValue<Vector2>() : Vector2.zero;
             bool sprintHeld = _sprintAction != null && _sprintAction.action.IsPressed();
 

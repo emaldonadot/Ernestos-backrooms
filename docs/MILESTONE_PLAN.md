@@ -95,9 +95,9 @@ Added Milestone 6. The same principle that keeps co-op cheap keeps VR cheap: gam
 | 2 | Modular World (room prefabs, connectors, seed-based layout, connectivity validation, debug viz) | Complete (PR #2) — see [milestone-2-modular-world.md](features/milestone-2-modular-world.md) |
 | 3 | Map System (discovery, Field Log rendering, pan/zoom, markers) | Complete (PR #3) — see [milestone-3-map-system.md](features/milestone-3-map-system.md) |
 | 4 | Puzzle & Progression (puzzle framework, locked route, exit room) | Complete (PR #4) — see [milestone-4-puzzle-progression.md](features/milestone-4-puzzle-progression.md) |
-| 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | PR #5 open, not yet merged — needs your F5/F9 Play-mode check (`Door.OnEnable` can't be verified headlessly) — see [milestone-5-persistence.md](features/milestone-5-persistence.md) |
-| 6 | VR Platform Support (Android/OpenXR/XRI setup, Quest rig, world-space UI, dual PC+Quest 2/3) | **In progress** — see [milestone-6-vr-platform-support.md](features/milestone-6-vr-platform-support.md) |
-| 7 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | Not started |
+| 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | Complete (PR #5) — see [milestone-5-persistence.md](features/milestone-5-persistence.md) |
+| 6 | VR Platform Support (Android/OpenXR/XRI setup, Quest rig, world-space UI, dual PC+Quest 2/3) | Complete (PR #6) — Field Log map's VR UI deferred pending a UX decision — see [milestone-6-vr-platform-support.md](features/milestone-6-vr-platform-support.md) |
+| 7 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | PR open, not yet merged — needs your Play-mode check (creature feel, capture/respawn flow) — see [milestone-7-horror-prototype.md](features/milestone-7-horror-prototype.md) |
 | 8 | Expanded Vertical Slice (variety, landmark room, secret room, storytelling, polish, playtesting) | Not started |
 | — | Online Co-op (future) | Not started — architecture prepared, no networking package added yet |
 
