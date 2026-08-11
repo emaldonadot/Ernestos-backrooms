@@ -229,6 +229,9 @@ namespace EndlessRooms.EditorSetup
             GameObject levelGo = BuildLevelBuilder();
             BuildPlayerAndSpawner(levelGo, movementConfig, actionRefs, out InteractionCaster interactionCaster, out GameObject playerGo);
 
+            var attendantConfig = Milestone7AssetBuilder.LoadOrCreateAttendantConfig();
+            Milestone7AssetBuilder.BuildAttendant(levelGo, attendantConfig, playerGo.transform);
+
             BuildSecretRoom(playerGo.transform.position);
             BuildInteractionPromptUi(interactionCaster);
             BuildFieldNoteUi(actionRefs.Interact);
