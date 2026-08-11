@@ -97,8 +97,8 @@ Added Milestone 6. The same principle that keeps co-op cheap keeps VR cheap: gam
 | 4 | Puzzle & Progression (puzzle framework, locked route, exit room) | Complete (PR #4) — see [milestone-4-puzzle-progression.md](features/milestone-4-puzzle-progression.md) |
 | 5 | Persistence (save/load seed, map, puzzle, door, item, marker state) | Complete (PR #5) — see [milestone-5-persistence.md](features/milestone-5-persistence.md) |
 | 6 | VR Platform Support (Android/OpenXR/XRI setup, Quest rig, world-space UI, dual PC+Quest 2/3) | Complete (PR #6) — Field Log map's VR UI deferred pending a UX decision — see [milestone-6-vr-platform-support.md](features/milestone-6-vr-platform-support.md) |
-| 7 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | PR open, not yet merged — needs your Play-mode check (creature feel, capture/respawn flow) — see [milestone-7-horror-prototype.md](features/milestone-7-horror-prototype.md) |
-| 8 | Expanded Vertical Slice (variety, landmark room, secret room, storytelling, polish, playtesting) | Not started |
+| 7 | Horror Prototype (The Attendant: perception/investigate/chase/search, hiding, capture/restart) | Complete (PR #7) — see [milestone-7-horror-prototype.md](features/milestone-7-horror-prototype.md) |
+| 8 | Expanded Vertical Slice (variety, landmark room, secret room, storytelling, polish, playtesting) | **In progress** — see [milestone-8-expanded-vertical-slice.md](features/milestone-8-expanded-vertical-slice.md) |
 | — | Online Co-op (future) | Not started — architecture prepared, no networking package added yet |
 
 Per the PRD's explicit process, each milestone after the current one requires user confirmation before implementation begins.
