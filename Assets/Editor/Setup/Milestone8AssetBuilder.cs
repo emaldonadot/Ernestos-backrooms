@@ -55,6 +55,8 @@ namespace EndlessRooms.EditorSetup
         private const string TexturesFolder = "Assets/TheEndlessRooms/Art/Textures";
         private const string MaterialsFolder = "Assets/TheEndlessRooms/Art/Materials";
         private const string WallMaterialPath = MaterialsFolder + "/Wall_Office.mat";
+        private const string FloorMaterialPath = MaterialsFolder + "/Floor_Office.mat";
+        private const string DoorMaterialPath = MaterialsFolder + "/Door_Office.mat";
 
         /// <summary>
         /// Builds a real material from the user-provided wall textures and applies it
@@ -62,22 +64,94 @@ namespace EndlessRooms.EditorSetup
         /// DebugColor.Wall placeholder now that a real asset exists. A menu command
         /// (not part of BuildScene) so it can run inside an already-open Editor
         /// session without a competing batch process, same as the earlier wall-related
-        /// one-time commands. Roughness isn't wired to a texture: URP Lit's Metallic
-        /// map expects smoothness packed into its alpha channel, not a standalone
-        /// roughness texture, and repacking it here isn't worth the complexity for one
-        /// flat wall material — a fixed smoothness value is used instead.
+        /// one-time commands.
         /// </summary>
         [MenuItem("Tools/The Endless Rooms/Apply Wall Texture (One-Time)")]
         public static void ApplyWallTexture()
         {
-            var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexturesFolder}/Wall_Office_Albedo.png");
-            if (albedo == null)
+            // Each wall segment (post door-split, see Milestone 7) is 2m wide x 3m tall;
+            // the texture was authored to represent ~2m x 2m, so 1 tile per 2m width,
+            // 1.5 tiles per 3m height.
+            Material material = CreateTexturedMaterial("Wall_Office", WallMaterialPath, new Vector2(1f, 1.5f));
+            if (material == null)
             {
-                Debug.LogError($"[Milestone8AssetBuilder] Could not find '{TexturesFolder}/Wall_Office_Albedo.png'.");
                 return;
             }
 
-            string normalPath = $"{TexturesFolder}/Wall_Office_Normal.png";
+            GameObject contents = PrefabUtility.LoadPrefabContents(RoomPrefabPath);
+
+            // RoomInstance.GetWall() only returns the door-sized "gap" piece it
+            // actually toggles — the two permanently-solid side pieces from Milestone
+            // 7's wall split ("Wall_North_Left"/"Wall_North_Right" etc.) are separate,
+            // unreferenced GameObjects. Match by name prefix instead of GetWall() so
+            // every piece gets the real texture, not just the one RoomInstance knows
+            // about (this is exactly why "only a section of the wall" showed it before).
+            int count = ApplyMaterialByNamePrefix(contents, "Wall_", material);
+            PrefabUtility.SaveAsPrefabAsset(contents, RoomPrefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+
+            Debug.Log($"[Milestone8AssetBuilder] Applied '{WallMaterialPath}' to {count} wall pieces.");
+        }
+
+        /// <summary>
+        /// Same idea as <see cref="ApplyWallTexture"/>, for the shared prefab's single
+        /// "Floor" object. Each room is 6m x 6m; the texture represents ~2m x 2m, so 3
+        /// tiles in each direction.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Apply Floor Texture (One-Time)")]
+        public static void ApplyFloorTexture()
+        {
+            Material material = CreateTexturedMaterial("Floor_Office", FloorMaterialPath, new Vector2(3f, 3f));
+            if (material == null)
+            {
+                return;
+            }
+
+            GameObject contents = PrefabUtility.LoadPrefabContents(RoomPrefabPath);
+            int count = ApplyMaterialByNamePrefix(contents, "Floor", material);
+            PrefabUtility.SaveAsPrefabAsset(contents, RoomPrefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+
+            Debug.Log($"[Milestone8AssetBuilder] Applied '{FloorMaterialPath}' to {count} floor piece(s).");
+        }
+
+        /// <summary>
+        /// Doors aren't part of the shared room prefab — <see cref="ProceduralLevelBuilder.PlaceDoor"/>
+        /// builds a fresh panel at runtime for every connection, so there's no single
+        /// asset to edit once. This just creates/persists the material; wiring it into
+        /// each level builder's optional <c>_doorMaterial</c> field happens in
+        /// <see cref="BuildLevelBuilder"/> the next time a scene using it is rebuilt.
+        /// Not tiled — the texture maps once onto a single 2m x 3m panel.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Create Door Material (One-Time)")]
+        public static void CreateDoorMaterial()
+        {
+            Material material = CreateTexturedMaterial("Door_Office", DoorMaterialPath, Vector2.one);
+            if (material != null)
+            {
+                Debug.Log($"[Milestone8AssetBuilder] Created/updated '{DoorMaterialPath}'. Rebuild any scene using ProceduralLevelBuilder to pick it up.");
+            }
+        }
+
+        /// <summary>
+        /// Loads "{name}_Albedo.png" (required) and "{name}_Normal.png" (optional) from
+        /// <see cref="TexturesFolder"/>, creates a URP Lit material, and persists it at
+        /// <paramref name="materialPath"/>. Roughness maps are deliberately not wired:
+        /// URP Lit's Metallic map expects smoothness packed into its alpha channel, not
+        /// a standalone roughness texture, and repacking it here isn't worth the
+        /// complexity for a flat placeholder material — a fixed smoothness value is
+        /// used instead.
+        /// </summary>
+        private static Material CreateTexturedMaterial(string name, string materialPath, Vector2 tiling)
+        {
+            var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexturesFolder}/{name}_Albedo.png");
+            if (albedo == null)
+            {
+                Debug.LogError($"[Milestone8AssetBuilder] Could not find '{TexturesFolder}/{name}_Albedo.png'.");
+                return null;
+            }
+
+            string normalPath = $"{TexturesFolder}/{name}_Normal.png";
             Texture2D normal = null;
             if (AssetImporter.GetAtPath(normalPath) is TextureImporter normalImporter)
             {
@@ -95,12 +169,9 @@ namespace EndlessRooms.EditorSetup
                 AssetDatabase.CreateFolder("Assets/TheEndlessRooms/Art", "Materials");
             }
 
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Wall_Office" };
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
             material.SetTexture("_BaseMap", albedo);
-            // Each wall segment (post door-split, see Milestone 7) is 2m wide x 3m tall;
-            // the texture was authored to represent ~2m x 2m, so 1 tile per 2m width,
-            // 1.5 tiles per 3m height.
-            material.mainTextureScale = new Vector2(1f, 1.5f);
+            material.mainTextureScale = tiling;
 
             if (normal != null)
             {
@@ -110,25 +181,21 @@ namespace EndlessRooms.EditorSetup
 
             material.SetFloat("_Smoothness", 0.35f);
 
-            if (AssetDatabase.LoadAssetAtPath<Material>(WallMaterialPath) != null)
+            if (AssetDatabase.LoadAssetAtPath<Material>(materialPath) != null)
             {
-                AssetDatabase.DeleteAsset(WallMaterialPath);
+                AssetDatabase.DeleteAsset(materialPath);
             }
 
-            AssetDatabase.CreateAsset(material, WallMaterialPath);
+            AssetDatabase.CreateAsset(material, materialPath);
+            return material;
+        }
 
-            GameObject contents = PrefabUtility.LoadPrefabContents(RoomPrefabPath);
-
-            // RoomInstance.GetWall() only returns the door-sized "gap" piece it
-            // actually toggles — the two permanently-solid side pieces from Milestone
-            // 7's wall split ("Wall_North_Left"/"Wall_North_Right" etc.) are separate,
-            // unreferenced GameObjects. Match by name prefix instead of GetWall() so
-            // every piece gets the real texture, not just the one RoomInstance knows
-            // about (this is exactly why "only a section of the wall" showed it before).
-            int recoloredCount = 0;
-            foreach (Transform child in contents.transform)
+        private static int ApplyMaterialByNamePrefix(GameObject root, string namePrefix, Material material)
+        {
+            int count = 0;
+            foreach (Transform child in root.transform)
             {
-                if (!child.name.StartsWith("Wall_"))
+                if (!child.name.StartsWith(namePrefix))
                 {
                     continue;
                 }
@@ -137,14 +204,11 @@ namespace EndlessRooms.EditorSetup
                 if (renderer != null)
                 {
                     renderer.sharedMaterial = material;
-                    recoloredCount++;
+                    count++;
                 }
             }
 
-            PrefabUtility.SaveAsPrefabAsset(contents, RoomPrefabPath);
-            PrefabUtility.UnloadPrefabContents(contents);
-
-            Debug.Log($"[Milestone8AssetBuilder] Applied '{WallMaterialPath}' to {recoloredCount} wall pieces.");
+            return count;
         }
 
         public static void BuildScene()
@@ -234,6 +298,13 @@ namespace EndlessRooms.EditorSetup
             }
 
             so.FindProperty("_buildOnStart").boolValue = false;
+
+            var doorMaterial = AssetDatabase.LoadAssetAtPath<Material>(DoorMaterialPath);
+            if (doorMaterial != null)
+            {
+                so.FindProperty("_doorMaterial").objectReferenceValue = doorMaterial;
+            }
+
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return levelGo;

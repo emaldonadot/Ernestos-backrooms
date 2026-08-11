@@ -449,6 +449,13 @@ namespace EndlessRooms.EditorSetup
             }
 
             so.FindProperty("_buildOnStart").boolValue = false;
+
+            var doorMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/TheEndlessRooms/Art/Materials/Door_Office.mat");
+            if (doorMaterial != null)
+            {
+                so.FindProperty("_doorMaterial").objectReferenceValue = doorMaterial;
+            }
+
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return levelGo;
