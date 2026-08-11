@@ -4,15 +4,14 @@ Reference doc for assets you might source/generate for Milestone 8. **None of th
 
 ## What ChatGPT can and can't actually do here
 
-Important before you spend time on this: **ChatGPT generates 2D images. It cannot generate 3D mesh files (FBX/OBJ) or audio files.**
+ChatGPT itself generates 2D images and text — it cannot directly output a 3D mesh file or an audio file. But for the props, there's a real path around that: **have ChatGPT write a Blender Python (`bpy`) script that builds the geometry procedurally and exports it to FBX.** Blender (free) actually executes that script and produces a genuine, correctly-scaled Unity-ready mesh — this isn't a workaround or a "good enough" substitute, it's a legitimate asset pipeline. The prompts below are written for that workflow.
 
-- **Textures** (flat 2D images) — ChatGPT can generate these directly and they can be used close to as-is.
-- **3D props** (bookcase, desk, cabinet, binder) — ChatGPT can only produce a *reference/concept image* of what the object should look like. That image is not a usable Unity asset by itself — you'd still need to either (a) model it manually in a 3D tool (e.g. Blender, free) using the image as a guide, or (b) run the image through a separate image-to-3D generation tool (not ChatGPT). If neither of those appeals to you, skip the props entirely — the secret room works fine with grey-box primitives standing in for furniture.
-- **Audio** (the reveal sting, the voiced personnel log) — ChatGPT can't generate sound at all. For the sting, a site like freesound.org (free, CC-licensed sound effects) is the realistic path. For the voiced personnel log, I've given you a narration *script* prompt instead — you'd run that text through a separate text-to-speech tool, not ChatGPT's image generator.
+- **Wall texture** — ChatGPT/DALL-E generates this directly as an image, usable close to as-is.
+- **3D props** (bookcase, desk, cabinet, binder) — ChatGPT writes a `bpy` script; you run it once inside Blender, and it writes out the FBX itself (the script includes the export step). Workflow: open Blender → **Scripting** tab → **New** → paste the script → **Run Script** (▶ or Alt+P) → the FBX appears next to your `.blend` file → drag it into the Unity project.
+- **Normal/roughness maps** — still not a good ChatGPT-image job; these need real surface height/material data. If you want them, run the finished albedo through a free normal-map generator tool instead.
+- **Audio** (the reveal sting, the voiced personnel log) — ChatGPT can't generate sound. For the sting, a site like freesound.org (free, CC-licensed effects) is the realistic path. For the voiced log, I've given a narration *script* prompt — run that text through a separate text-to-speech tool.
 
-Given that, realistically **the wall texture is the one item here you can go get from ChatGPT right now and actually use.** Everything else either needs an extra tool/step or isn't a ChatGPT job to begin with.
-
-## Reference dimensions (Unity: 1 unit = 1 meter)
+## Reference dimensions (Unity: 1 unit = 1 meter — Blender's default metric unit already matches this, so build directly at real-world scale)
 
 | Reference | Size |
 |---|---|
@@ -24,17 +23,17 @@ Given that, realistically **the wall texture is the one item here you can go get
 
 ## Asset table
 
-| Asset | Type | Priority | Format | Size | Can ChatGPT make it? |
+| Asset | Type | Priority | Format | Size | How to get it |
 |---|---|---|---|---|---|
-| `Wall_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1024, represents ~2m×2m of wall, seamless tile | **Yes — directly usable** |
-| `Wall_Office_Normal.png` | Texture (normal map) | Optional | PNG | 1024×1024, matching albedo | No — see note below |
-| `Wall_Office_Roughness.png` | Texture (roughness) | Optional | PNG (grayscale) | 1024×1024, matching albedo | No — see note below |
-| `Bookcase_Disguise` | 3D prop (secret door disguise) | Recommended if doing props at all | Concept image only (PNG) | ~2m W × 2.2m H × 0.4m D | Concept reference only, not a mesh |
-| `Desk_Office` | 3D prop | Optional | Concept image only (PNG) | ~1.4m × 0.7m × 0.75m | Concept reference only, not a mesh |
-| `FilingCabinet` | 3D prop | Optional | Concept image only (PNG) | ~0.45m × 0.6m × 1.3m | Concept reference only, not a mesh |
-| `Binder_PersonnelLogs` | 3D prop | Optional | Concept image only (PNG) | ~0.3m × 0.25m × 0.05m | Concept reference only, not a mesh |
-| `SecretRoom_Reveal_Sting.ogg` | Audio (sting) | Optional | OGG | 1-3 seconds | No — source from freesound.org or similar |
-| `PersonnelLog_01_VO` | Audio (voiced log) | Optional | OGG/WAV | ~30-60 seconds | No — script prompt provided, needs a TTS tool separately |
+| `Wall_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1024, represents ~2m×2m of wall, seamless tile | ChatGPT/DALL-E image prompt, used directly |
+| `Wall_Office_Normal.png` | Texture (normal map) | Optional | PNG | 1024×1024, matching albedo | Not ChatGPT — derive from albedo via a normal-map generator tool |
+| `Wall_Office_Roughness.png` | Texture (roughness) | Optional | PNG (grayscale) | 1024×1024, matching albedo | Not ChatGPT — same as above |
+| `Bookcase_Disguise.fbx` | 3D prop (secret door disguise) | Recommended if doing props at all | FBX | 2.0m W × 2.2m H × 0.4m D | ChatGPT writes a Blender `bpy` script → run in Blender → FBX comes out |
+| `Desk_Office.fbx` | 3D prop | Optional | FBX | 1.4m × 0.7m × 0.75m | Same Blender-script workflow |
+| `FilingCabinet.fbx` | 3D prop | Optional | FBX | 0.45m × 0.6m × 1.3m | Same Blender-script workflow |
+| `Binder_PersonnelLogs.fbx` | 3D prop | Optional | FBX | 0.3m × 0.25m × 0.05m | Same Blender-script workflow |
+| `SecretRoom_Reveal_Sting.ogg` | Audio (sting) | Optional | OGG | 1-3 seconds | Not ChatGPT — source from freesound.org or similar |
+| `PersonnelLog_01_VO` | Audio (voiced log) | Optional | OGG/WAV | ~30-60 seconds | Script prompt below, then a separate TTS tool |
 
 ## Prompts
 
@@ -55,60 +54,143 @@ edge-to-edge with no visible seam when repeated.
 
 ### Normal/roughness maps — not a ChatGPT prompt
 
-These need actual surface height/material data that an image generator can't produce meaningfully — asking ChatGPT for one just yields a flat gray or purple image with no real bump/roughness information. If you want these, the practical path is running the finished albedo texture through a free normal-map generator tool (there are several web-based ones) rather than prompting for them directly.
+These need actual surface height/material data that an image generator can't produce meaningfully. If you want them, run the finished albedo texture through a free normal-map generator tool rather than prompting for one directly.
 
-### `Bookcase_Disguise` concept reference
-
-```
-Create a concept reference image of a plain wooden office bookcase/shelving
-unit, viewed straight-on from the front with no perspective distortion
-(orthographic front elevation), against a flat plain white background.
-Approximately 2 meters wide and 2.2 meters tall, 4-5 shelves, styled as
-generic late-20th-century corporate office furniture — plain, functional,
-slightly worn with age, no modern branding or text. Even flat lighting, no
-strong shadows, no background elements. This is a modeling reference image,
-not a finished rendered scene.
-```
-
-### `Desk_Office` concept reference
+### `Bookcase_Disguise.fbx` — Blender script prompt
 
 ```
-Create a concept reference image of a plain corporate office desk, viewed
-straight-on from the front with no perspective distortion (orthographic
-front elevation), against a flat plain white background. Approximately 1.4
-meters wide, 0.75 meters tall. Styled as generic late-20th-century office
-furniture — laminate surface, metal legs, functional and worn, no branding.
-Even flat lighting, no strong shadows, no background elements. This is a
-modeling reference image, not a finished rendered scene.
+Write a complete, runnable Blender Python (bpy) script that procedurally
+builds a low-poly, game-ready 3D model of a plain wooden office bookcase, and
+exports it to FBX. I will paste this directly into Blender's Scripting tab
+and run it, so it needs to work standalone with no manual steps afterward.
+
+Requirements:
+- Units: build directly at real-world meter scale (Blender's default metric
+  unit already equals 1 meter — do not change unit settings).
+- Overall dimensions: 2.0m wide, 2.2m tall, 0.4m deep.
+- Structure: a back panel, two side panels, a top panel, a bottom panel, and
+  5 evenly-spaced horizontal shelf boards between them (open-fronted, no
+  doors). Add 6-10 simple rectangular "book" boxes of varying width, height,
+  and color scattered across 2-3 of the shelves for visual interest.
+- Keep geometry low-poly and game-ready: basic box primitives with
+  extrusions/bevels only where needed. No subdivision or sculpting detail.
+- Origin: set the object's origin to the bottom-center of the bookcase (the
+  floor contact point, centered on width and depth) — not the geometric
+  center of the whole mesh.
+- Materials: simple flat-color Principled BSDF materials — a brown "wood"
+  material for the frame/shelves, and 3-4 varied plain colors for the book
+  boxes. No texture images needed.
+- UVs: apply a basic Smart UV Project unwrap to every object so it's
+  texture-ready even without a texture applied now.
+- Hierarchy: parent all pieces under a single empty named "Bookcase_Disguise",
+  then join everything into one final mesh object with that same name.
+- At the end of the script, export the result to FBX at
+  "//Bookcase_Disguise.fbx" (relative to the current .blend file) using
+  bpy.ops.export_scene.fbx() with default forward/up axis settings and
+  "Apply Transform" (apply unit/scale) enabled, so it imports correctly into
+  Unity with no rotation or scale surprises.
+
+Output only the complete Python script in a single code block, nothing else.
 ```
 
-### `FilingCabinet` concept reference
+### `Desk_Office.fbx` — Blender script prompt
 
 ```
-Create a concept reference image of a plain metal 4-drawer office filing
-cabinet, viewed straight-on from the front with no perspective distortion
-(orthographic front elevation), against a flat plain white background.
-Approximately 0.45 meters wide and 1.3 meters tall. Grey or beige metal,
-slightly worn/scuffed, no branding or text. Even flat lighting, no strong
-shadows, no background elements. This is a modeling reference image, not a
-finished rendered scene.
+Write a complete, runnable Blender Python (bpy) script that procedurally
+builds a low-poly, game-ready 3D model of a plain corporate office desk, and
+exports it to FBX. I will paste this directly into Blender's Scripting tab
+and run it, so it needs to work standalone with no manual steps afterward.
+
+Requirements:
+- Units: build directly at real-world meter scale (Blender's default metric
+  unit already equals 1 meter).
+- Overall dimensions: 1.4m wide, 0.7m deep, 0.75m tall.
+- Structure: a flat rectangular desktop surface on a simple metal-frame leg
+  structure (4 legs or an H-frame), plus one shallow drawer box on one side
+  (static/closed, doesn't need to open).
+- Keep geometry low-poly and game-ready: basic box primitives only.
+- Origin: set the object's origin to the bottom-center of the desk (floor
+  contact point, centered on width and depth).
+- Materials: a plain beige/tan laminate material for the desktop, a dark
+  gray metal material for the legs/frame. Simple Principled BSDF, no
+  textures.
+- UVs: apply a basic Smart UV Project unwrap to every object.
+- Hierarchy: parent all pieces under a single empty named "Desk_Office", then
+  join into one final mesh object with that same name.
+- Export the result to FBX at "//Desk_Office.fbx" (relative to the current
+  .blend file) using bpy.ops.export_scene.fbx() with default forward/up axis
+  settings and "Apply Transform" enabled.
+
+Output only the complete Python script in a single code block, nothing else.
 ```
 
-### `Binder_PersonnelLogs` concept reference
+### `FilingCabinet.fbx` — Blender script prompt
 
 ```
-Create a concept reference image of a worn ring binder/folder, the kind used
-for paper personnel files, viewed straight-on from the front with no
-perspective distortion, against a flat plain white background. Approximately
-0.3 meters wide and 0.25 meters tall, thin (about 5cm). Dark gray or navy
-vinyl cover, faded label area on the spine (no legible text needed), edges
-worn from handling. Even flat lighting, no strong shadows, no background
-elements. This is a modeling reference image, not a finished rendered scene.
+Write a complete, runnable Blender Python (bpy) script that procedurally
+builds a low-poly, game-ready 3D model of a plain metal 4-drawer office
+filing cabinet, and exports it to FBX. I will paste this directly into
+Blender's Scripting tab and run it, so it needs to work standalone with no
+manual steps afterward.
+
+Requirements:
+- Units: build directly at real-world meter scale (Blender's default metric
+  unit already equals 1 meter).
+- Overall dimensions: 0.45m wide, 0.6m deep, 1.3m tall.
+- Structure: a rectangular cabinet body with 4 stacked drawer faces (flat
+  boxes with a simple raised handle bar on each — closed/static, don't need
+  to open).
+- Keep geometry low-poly and game-ready: basic box primitives only.
+- Origin: set the object's origin to the bottom-center of the cabinet (floor
+  contact point, centered on width and depth).
+- Materials: a plain gray or beige metal material for the body, a slightly
+  darker gray for the drawer handles. Simple Principled BSDF, no textures.
+- UVs: apply a basic Smart UV Project unwrap to every object.
+- Hierarchy: parent all pieces under a single empty named "FilingCabinet",
+  then join into one final mesh object with that same name.
+- Export the result to FBX at "//FilingCabinet.fbx" (relative to the current
+  .blend file) using bpy.ops.export_scene.fbx() with default forward/up axis
+  settings and "Apply Transform" enabled.
+
+Output only the complete Python script in a single code block, nothing else.
+```
+
+### `Binder_PersonnelLogs.fbx` — Blender script prompt
+
+```
+Write a complete, runnable Blender Python (bpy) script that procedurally
+builds a low-poly, game-ready 3D model of a worn ring binder/folder (the kind
+used for paper personnel files), and exports it to FBX. I will paste this
+directly into Blender's Scripting tab and run it, so it needs to work
+standalone with no manual steps afterward.
+
+Requirements:
+- Units: build directly at real-world meter scale (Blender's default metric
+  unit already equals 1 meter).
+- Overall dimensions: 0.3m wide, 0.25m tall, 0.05m thick.
+- Structure: a simple rectangular box with slightly beveled edges,
+  representing a closed ring binder. Add a thin raised rectangular strip
+  along the spine to suggest a label area (no legible text needed).
+- Keep geometry low-poly and game-ready: a single box primitive with a
+  bevel modifier applied is enough — apply the modifier (make it real
+  geometry) before export.
+- Origin: set the object's origin to the bottom-center of the binder (the
+  face it would rest flat on, centered on width and thickness).
+- Materials: a dark navy or gray vinyl-look material for the cover, a
+  slightly lighter gray for the spine label strip. Simple Principled BSDF,
+  no textures.
+- UVs: apply a basic Smart UV Project unwrap.
+- Naming: name the final object "Binder_PersonnelLogs".
+- Export the result to FBX at "//Binder_PersonnelLogs.fbx" (relative to the
+  current .blend file) using bpy.ops.export_scene.fbx() with default
+  forward/up axis settings and "Apply Transform" enabled.
+
+Output only the complete Python script in a single code block, nothing else.
 ```
 
 ### `SecretRoom_Reveal_Sting.ogg` — not a ChatGPT prompt
 
-Search freesound.org (or similar CC-licensed sound libraries) for something like "low drone sting," "unsettling stinger," or "horror reveal cue" — 1-3 seconds, low-frequency, no melody. Not something to generate via text/image prompting.
+Search freesound.org (or similar CC-licensed sound libraries) for something like "low drone sting," "unsettling stinger," or "horror reveal cue" — 1-3 seconds, low-frequency, no melody. Not something to generate via text/image/script prompting.
 
 ### `PersonnelLog_01_VO` — narration script prompt (text only, then needs a separate TTS tool)
 
@@ -125,3 +207,7 @@ horror-movie language.
 ```
 
 That gives you the text; running it through any text-to-speech tool (or ChatGPT's separate voice features, if you have access) gets you the audio file.
+
+## A note on the bookcase's pivot
+
+I asked for bottom-center origin on all four props, including the bookcase, to keep the Blender-side script simple and consistent. The bookcase disguises a functional secret door that swings open on a hinge — I'll handle lining up its pivot with the door's swing behavior on the Unity side when I wire it in; that's not something the model itself needs to account for.
