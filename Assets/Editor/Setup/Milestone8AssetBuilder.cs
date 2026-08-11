@@ -28,6 +28,7 @@ namespace EndlessRooms.EditorSetup
         private const string MovementConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/PlayerMovementConfig.asset";
         private const string RoomPrefabPath = "Assets/TheEndlessRooms/Prefabs/ModularRoomBase.prefab";
         private const string ModelsFolder = "Assets/TheEndlessRooms/Art/Models";
+        private const string AudioFolder = "Assets/TheEndlessRooms/Audio";
         private const string ScenePath = "Assets/TheEndlessRooms/Scenes/Milestone8_SecretRoomTestScene.unity";
         private const float DoorWidth = 2f;
         private const float WallHeight = 3f;
@@ -50,6 +51,101 @@ namespace EndlessRooms.EditorSetup
             "but he has full building access.\n\n" +
             "Starting to think the roster we're given every Monday doesn't match who's " +
             "actually clocking in.";
+
+        private const string TexturesFolder = "Assets/TheEndlessRooms/Art/Textures";
+        private const string MaterialsFolder = "Assets/TheEndlessRooms/Art/Materials";
+        private const string WallMaterialPath = MaterialsFolder + "/Wall_Office.mat";
+
+        /// <summary>
+        /// Builds a real material from the user-provided wall textures and applies it
+        /// to the shared ModularRoomBase prefab's four walls — replacing the flat
+        /// DebugColor.Wall placeholder now that a real asset exists. A menu command
+        /// (not part of BuildScene) so it can run inside an already-open Editor
+        /// session without a competing batch process, same as the earlier wall-related
+        /// one-time commands. Roughness isn't wired to a texture: URP Lit's Metallic
+        /// map expects smoothness packed into its alpha channel, not a standalone
+        /// roughness texture, and repacking it here isn't worth the complexity for one
+        /// flat wall material — a fixed smoothness value is used instead.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Apply Wall Texture (One-Time)")]
+        public static void ApplyWallTexture()
+        {
+            var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>($"{TexturesFolder}/Wall_Office_Albedo.png");
+            if (albedo == null)
+            {
+                Debug.LogError($"[Milestone8AssetBuilder] Could not find '{TexturesFolder}/Wall_Office_Albedo.png'.");
+                return;
+            }
+
+            string normalPath = $"{TexturesFolder}/Wall_Office_Normal.png";
+            Texture2D normal = null;
+            if (AssetImporter.GetAtPath(normalPath) is TextureImporter normalImporter)
+            {
+                if (normalImporter.textureType != TextureImporterType.NormalMap)
+                {
+                    normalImporter.textureType = TextureImporterType.NormalMap;
+                    normalImporter.SaveAndReimport();
+                }
+
+                normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+            }
+
+            if (!AssetDatabase.IsValidFolder(MaterialsFolder))
+            {
+                AssetDatabase.CreateFolder("Assets/TheEndlessRooms/Art", "Materials");
+            }
+
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Wall_Office" };
+            material.SetTexture("_BaseMap", albedo);
+            // Each wall segment (post door-split, see Milestone 7) is 2m wide x 3m tall;
+            // the texture was authored to represent ~2m x 2m, so 1 tile per 2m width,
+            // 1.5 tiles per 3m height.
+            material.mainTextureScale = new Vector2(1f, 1.5f);
+
+            if (normal != null)
+            {
+                material.SetTexture("_BumpMap", normal);
+                material.EnableKeyword("_NORMALMAP");
+            }
+
+            material.SetFloat("_Smoothness", 0.35f);
+
+            if (AssetDatabase.LoadAssetAtPath<Material>(WallMaterialPath) != null)
+            {
+                AssetDatabase.DeleteAsset(WallMaterialPath);
+            }
+
+            AssetDatabase.CreateAsset(material, WallMaterialPath);
+
+            GameObject contents = PrefabUtility.LoadPrefabContents(RoomPrefabPath);
+
+            // RoomInstance.GetWall() only returns the door-sized "gap" piece it
+            // actually toggles — the two permanently-solid side pieces from Milestone
+            // 7's wall split ("Wall_North_Left"/"Wall_North_Right" etc.) are separate,
+            // unreferenced GameObjects. Match by name prefix instead of GetWall() so
+            // every piece gets the real texture, not just the one RoomInstance knows
+            // about (this is exactly why "only a section of the wall" showed it before).
+            int recoloredCount = 0;
+            foreach (Transform child in contents.transform)
+            {
+                if (!child.name.StartsWith("Wall_"))
+                {
+                    continue;
+                }
+
+                var renderer = child.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.sharedMaterial = material;
+                    recoloredCount++;
+                }
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(contents, RoomPrefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+
+            Debug.Log($"[Milestone8AssetBuilder] Applied '{WallMaterialPath}' to {recoloredCount} wall pieces.");
+        }
 
         public static void BuildScene()
         {
@@ -207,9 +303,10 @@ namespace EndlessRooms.EditorSetup
 
             var roomInstance = secretRoomGo.GetComponent<RoomInstance>();
             roomInstance.OpenWall(Direction.North);
-            DebugColor.Apply(roomInstance.GetWall(Direction.East), DebugColor.Wall);
-            DebugColor.Apply(roomInstance.GetWall(Direction.South), DebugColor.Wall);
-            DebugColor.Apply(roomInstance.GetWall(Direction.West), DebugColor.Wall);
+            // No DebugColor.Apply here: this room instantiates the same
+            // ModularRoomBase prefab every other room uses, so its walls already
+            // carry whatever material that shared prefab has (the real Wall_Office
+            // texture once one exists) — painting them yellow here would override it.
 
             Vector3 doorBoundary = roomCenter + new Vector3(0f, 0f, cellSize / 2f);
             BuildDisguisedDoor(doorBoundary);
@@ -243,6 +340,20 @@ namespace EndlessRooms.EditorSetup
             var door = hinge.AddComponent<Door>();
             door.Initialize(hinge.transform);
             door.SetCustomPrompts("Move the Bookcase", "Push the Bookcase Back");
+
+            var revealClip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{AudioFolder}/SecretRoom_Reveal_Sting.ogg");
+            if (revealClip != null)
+            {
+                var audioSource = hinge.AddComponent<AudioSource>();
+                audioSource.playOnAwake = false;
+                audioSource.spatialBlend = 1f;
+
+                var revealSound = hinge.AddComponent<DoorRevealSound>();
+                var revealSo = new SerializedObject(revealSound);
+                revealSo.FindProperty("_door").objectReferenceValue = door;
+                revealSo.FindProperty("_revealClip").objectReferenceValue = revealClip;
+                revealSo.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         private static GameObject InstantiateProp(string fbxFileName, Vector3 position, Quaternion rotation)
