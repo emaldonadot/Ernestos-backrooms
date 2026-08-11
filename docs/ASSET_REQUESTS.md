@@ -31,6 +31,8 @@ What's left that genuinely still needs an external tool:
 | `Wall_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1024, represents ~2m×2m of wall, seamless tile | ChatGPT/DALL-E image prompt, used directly |
 | `Wall_Office_Normal.png` | Texture (normal map) | Optional | PNG | 1024×1024, matching albedo | Not ChatGPT — derive from albedo via a normal-map generator tool |
 | `Wall_Office_Roughness.png` | Texture (roughness) | Optional | PNG (grayscale) | 1024×1024, matching albedo | Not ChatGPT — same as above |
+| `Door_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1536 (2:3 portrait), maps once onto one 2m×3m door panel — **not** tileable | ChatGPT/DALL-E image prompt, used directly |
+| `Floor_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1024, represents ~2m×2m of floor, seamless tile | ChatGPT/DALL-E image prompt, used directly |
 | `Bookcase_Disguise.fbx` | 3D prop (secret door disguise) | Recommended if doing props at all | FBX | 2.0m W × 2.2m H × 0.4m D | **Already generated** — run `Tools/AssetGeneration/blender/generate_assets.sh` |
 | `Desk_Office.fbx` | 3D prop | Optional | FBX | 1.4m × 0.7m × 0.75m | **Already generated** — same script |
 | `FilingCabinet.fbx` | 3D prop | Optional | FBX | 0.45m × 0.6m × 1.3m | **Already generated** — same script |
@@ -57,7 +59,38 @@ edge-to-edge with no visible seam when repeated.
 
 ### Normal/roughness maps — not a ChatGPT prompt
 
-These need actual surface height/material data that an image generator can't produce meaningfully. If you want them, run the finished albedo texture through a free normal-map generator tool rather than prompting for one directly.
+These need actual surface height/material data that an image generator can't produce meaningfully. If you want them, run the finished albedo texture through a free normal-map generator tool rather than prompting for one directly. Applies to the door and floor textures below too, not just the wall.
+
+### `Door_Office_Albedo.png` — ready to use in ChatGPT/DALL-E
+
+Note this one is different from the wall/floor prompts: it's **not** a seamless tile — it maps once onto a single door panel, so the prompt explicitly says not to tile it.
+
+```
+Create a texture for a single office interior door panel — this maps once
+onto one door-sized panel, so it must NOT be a seamless/tileable pattern.
+Portrait orientation, aspect ratio 2:3 (the panel is 2 meters wide by 3
+meters tall). A plain painted institutional metal door, dull gray-green or
+beige tone, with a simple flush door handle or push plate positioned about a
+third of the way up, a scuffed metal kick plate along the bottom edge, and
+light wear and scratches consistent with decades of use. No windows, no
+signage, no text. Flat, even studio lighting with no strong directional
+shadows or highlights, viewed straight-on with no perspective distortion.
+High detail, photorealistic material texture.
+```
+
+### `Floor_Office_Albedo.png` — ready to use in ChatGPT/DALL-E
+
+```
+Create a seamless, tileable texture of worn office corridor flooring — muted
+gray-blue carpet tile (or speckled beige linoleum, whichever renders more
+convincingly seamless) with subtle wear patterns, faint stains, and light
+texture variation. The tile should represent roughly a 2 meter by 2 meter
+section of floor. Flat, even studio lighting with no visible directional
+shadows or highlights, viewed straight down with no perspective distortion.
+No text, no logos. Square image, high detail, photorealistic material
+texture, edges must tile seamlessly edge-to-edge with no visible seam when
+repeated.
+```
 
 ### `Bookcase_Disguise.fbx` — Blender script prompt
 
