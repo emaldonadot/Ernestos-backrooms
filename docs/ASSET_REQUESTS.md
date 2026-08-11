@@ -2,13 +2,16 @@
 
 Reference doc for assets you might source/generate for Milestone 8. **None of these are required** — the game works and tests fine fully grey-boxed. This exists so if you *do* want to add some visual texture, you know exactly what to make, at what size, and how.
 
-## What ChatGPT can and can't actually do here
+## The 3D props are already generated — no ChatGPT step needed for these
 
-ChatGPT itself generates 2D images and text — it cannot directly output a 3D mesh file or an audio file. But for the props, there's a real path around that: **have ChatGPT write a Blender Python (`bpy`) script that builds the geometry procedurally and exports it to FBX.** Blender (free) actually executes that script and produces a genuine, correctly-scaled Unity-ready mesh — this isn't a workaround or a "good enough" substitute, it's a legitimate asset pipeline. The prompts below are written for that workflow.
+The four props (`Bookcase_Disguise`, `Desk_Office`, `FilingCabinet`, `Binder_PersonnelLogs`) have a working, **already-tested** generator: `Tools/AssetGeneration/blender/`. Run `./generate_assets.sh` there and Blender builds all four and exports the FBX files in one pass — no ChatGPT round-trip required. Verified end-to-end on this machine: correct dimensions, correct bottom-center origin on each, materials/UVs applied, and each one rendered to confirm the geometry looks right (screenshots were reviewed, not just the export log). See `Tools/AssetGeneration/blender/README.md` for exact usage.
+
+The Blender-script prompts further down are kept for reference/regeneration if you ever want to tweak or regenerate one of these differently (e.g. via ChatGPT) — but for the current specs, just run the script.
+
+What's left that genuinely still needs an external tool:
 
 - **Wall texture** — ChatGPT/DALL-E generates this directly as an image, usable close to as-is.
-- **3D props** (bookcase, desk, cabinet, binder) — ChatGPT writes a `bpy` script; you run it once inside Blender, and it writes out the FBX itself (the script includes the export step). Workflow: open Blender → **Scripting** tab → **New** → paste the script → **Run Script** (▶ or Alt+P) → the FBX appears next to your `.blend` file → drag it into the Unity project.
-- **Normal/roughness maps** — still not a good ChatGPT-image job; these need real surface height/material data. If you want them, run the finished albedo through a free normal-map generator tool instead.
+- **Normal/roughness maps** — not a good ChatGPT-image job; these need real surface height/material data. If you want them, run the finished albedo through a free normal-map generator tool instead.
 - **Audio** (the reveal sting, the voiced personnel log) — ChatGPT can't generate sound. For the sting, a site like freesound.org (free, CC-licensed effects) is the realistic path. For the voiced log, I've given a narration *script* prompt — run that text through a separate text-to-speech tool.
 
 ## Reference dimensions (Unity: 1 unit = 1 meter — Blender's default metric unit already matches this, so build directly at real-world scale)
@@ -28,10 +31,10 @@ ChatGPT itself generates 2D images and text — it cannot directly output a 3D m
 | `Wall_Office_Albedo.png` | Texture (base color) | Recommended | PNG | 1024×1024, represents ~2m×2m of wall, seamless tile | ChatGPT/DALL-E image prompt, used directly |
 | `Wall_Office_Normal.png` | Texture (normal map) | Optional | PNG | 1024×1024, matching albedo | Not ChatGPT — derive from albedo via a normal-map generator tool |
 | `Wall_Office_Roughness.png` | Texture (roughness) | Optional | PNG (grayscale) | 1024×1024, matching albedo | Not ChatGPT — same as above |
-| `Bookcase_Disguise.fbx` | 3D prop (secret door disguise) | Recommended if doing props at all | FBX | 2.0m W × 2.2m H × 0.4m D | ChatGPT writes a Blender `bpy` script → run in Blender → FBX comes out |
-| `Desk_Office.fbx` | 3D prop | Optional | FBX | 1.4m × 0.7m × 0.75m | Same Blender-script workflow |
-| `FilingCabinet.fbx` | 3D prop | Optional | FBX | 0.45m × 0.6m × 1.3m | Same Blender-script workflow |
-| `Binder_PersonnelLogs.fbx` | 3D prop | Optional | FBX | 0.3m × 0.25m × 0.05m | Same Blender-script workflow |
+| `Bookcase_Disguise.fbx` | 3D prop (secret door disguise) | Recommended if doing props at all | FBX | 2.0m W × 2.2m H × 0.4m D | **Already generated** — run `Tools/AssetGeneration/blender/generate_assets.sh` |
+| `Desk_Office.fbx` | 3D prop | Optional | FBX | 1.4m × 0.7m × 0.75m | **Already generated** — same script |
+| `FilingCabinet.fbx` | 3D prop | Optional | FBX | 0.45m × 0.6m × 1.3m | **Already generated** — same script |
+| `Binder_PersonnelLogs.fbx` | 3D prop | Optional | FBX | 0.3m × 0.25m × 0.05m | **Already generated** — same script |
 | `SecretRoom_Reveal_Sting.ogg` | Audio (sting) | Optional | OGG | 1-3 seconds | Not ChatGPT — source from freesound.org or similar |
 | `PersonnelLog_01_VO` | Audio (voiced log) | Optional | OGG/WAV | ~30-60 seconds | Script prompt below, then a separate TTS tool |
 
