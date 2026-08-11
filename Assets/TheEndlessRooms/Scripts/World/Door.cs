@@ -16,6 +16,9 @@ namespace EndlessRooms.World
         [SerializeField] private float _openSpeed = 120f;
         [Tooltip("Leave blank to use the GameObject name as the save identifier.")]
         [SerializeField] private string _saveId = "";
+        [Tooltip("Leave blank to use the default 'Open Door'/'Close Door' prompts. Set for a disguised door (e.g. a secret door dressed as a bookcase) that shouldn't announce itself as a door.")]
+        [SerializeField] private string _customOpenPrompt = "";
+        [SerializeField] private string _customClosePrompt = "";
 
         private float _currentAngle;
 
@@ -54,7 +57,7 @@ namespace EndlessRooms.World
         }
 
         /// <summary>Wires the hinge for doors added at runtime (e.g. by <see cref="ProceduralLevelBuilder"/>), where <see cref="Reset"/> never runs.</summary>
-        internal void Initialize(Transform hinge)
+        public void Initialize(Transform hinge)
         {
             _hinge = hinge;
         }
@@ -82,7 +85,19 @@ namespace EndlessRooms.World
 
         public string GetInteractionPrompt()
         {
-            return IsOpen ? "Close Door" : "Open Door";
+            if (IsOpen)
+            {
+                return string.IsNullOrEmpty(_customClosePrompt) ? "Close Door" : _customClosePrompt;
+            }
+
+            return string.IsNullOrEmpty(_customOpenPrompt) ? "Open Door" : _customOpenPrompt;
+        }
+
+        /// <summary>Placement-time override for a disguised door (e.g. a secret door dressed as a bookcase) — leaving either blank keeps the default "Open Door"/"Close Door" text.</summary>
+        public void SetCustomPrompts(string openPrompt, string closePrompt)
+        {
+            _customOpenPrompt = openPrompt;
+            _customClosePrompt = closePrompt;
         }
 
         public bool CanInteract(InteractionContext context)

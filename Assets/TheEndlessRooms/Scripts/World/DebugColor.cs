@@ -18,6 +18,7 @@ namespace EndlessRooms.World
         public static readonly Color Attendant = Color.red;
         public static readonly Color HidingSpot = Color.blue;
         public static readonly Color Pickup = Color.green;
+        public static readonly Color Note = new(0.9f, 0.87f, 0.7f);
 
         public static void Apply(GameObject target, Color color)
         {
