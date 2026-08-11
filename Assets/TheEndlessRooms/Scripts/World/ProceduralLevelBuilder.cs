@@ -204,15 +204,31 @@ namespace EndlessRooms.World
                 ? new Vector3(_doorWidth / 2f, _wallHeight / 2f, 0f)
                 : new Vector3(0f, _wallHeight / 2f, _doorWidth / 2f);
 
+            // The panel (below) spans from the hinge outward by a full _doorWidth in
+            // one direction — it doesn't straddle the hinge. Since the wall's door-sized
+            // gap is centered on boundaryPoint (see RoomInstance's split wall pieces),
+            // the hinge itself needs to sit at the gap's edge, not its center, or the
+            // closed panel only covers half the gap and leaves the other half walkable.
+            Vector3 hingePosition = boundaryPoint;
+            if (runsAlongX)
+            {
+                hingePosition.x -= _doorWidth / 2f;
+            }
+            else
+            {
+                hingePosition.z -= _doorWidth / 2f;
+            }
+
             var hinge = new GameObject("DoorHinge");
             hinge.transform.SetParent(transform, worldPositionStays: false);
-            hinge.transform.position = boundaryPoint;
+            hinge.transform.position = hingePosition;
 
             GameObject panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
             panel.name = "DoorPanel";
             panel.transform.SetParent(hinge.transform, worldPositionStays: false);
             panel.transform.localPosition = hingeToPanelOffset;
             panel.transform.localScale = panelScale;
+            DebugColor.Apply(panel, DebugColor.Door);
 
             var door = hinge.AddComponent<Door>();
             door.Initialize(hinge.transform);

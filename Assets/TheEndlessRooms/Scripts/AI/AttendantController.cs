@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using EndlessRooms.Core;
 using EndlessRooms.Player;
+using EndlessRooms.Procedural;
 using EndlessRooms.World;
 using UnityEngine;
 
@@ -56,6 +57,12 @@ namespace EndlessRooms.AI
         /// Wires runtime dependencies that would otherwise be found via Awake/OnEnable
         /// — exposed as a public method (see DECISIONS.md's 2026-08-07 MonoBehaviour
         /// lifecycle entry) so headless tooling and real gameplay share one code path.
+        /// Deliberately does *not* resolve a home room or subscribe to doors here: this
+        /// runs from <see cref="OnEnable"/>, which fires before
+        /// <c>LevelPlayerSpawner.Start()</c> has actually generated the level, so
+        /// <see cref="ProceduralLevelBuilder.LastGraph"/> would still be null (or stale
+        /// from a previous build). That part happens in <see cref="OnLevelBuilt"/>
+        /// instead, driven by <see cref="ProceduralLevelBuilder.LevelBuilt"/>.
         /// </summary>
         public void EnsureInitialized()
         {
@@ -71,13 +78,14 @@ namespace EndlessRooms.AI
             _target = playerGo != null ? playerGo.GetComponentInChildren<IDetectable>() : null;
             _targetCameraShake = playerGo != null ? playerGo.GetComponentInChildren<CameraShakeEffect>() : null;
 
-            if (_levelBuilder != null && _levelBuilder.LastGraph != null)
+            if (_levelBuilder != null)
             {
-                _homeNodeId = RoomGraphPathfinder.FindNearestNode(_levelBuilder.LastGraph, transform.position, NodeToWorld);
-                _currentPatrolNodeId = _homeNodeId;
+                _levelBuilder.LevelBuilt += OnLevelBuilt;
+                if (_levelBuilder.LastGraph != null)
+                {
+                    OnLevelBuilt(_levelBuilder.LastGraph);
+                }
             }
-
-            SubscribeToDoors();
         }
 
         private void OnEnable()
@@ -87,7 +95,42 @@ namespace EndlessRooms.AI
 
         private void OnDisable()
         {
+            if (_levelBuilder != null)
+            {
+                _levelBuilder.LevelBuilt -= OnLevelBuilt;
+            }
+
             UnsubscribeFromDoors();
+        }
+
+        /// <summary>
+        /// Fires once the level is actually built (initial build, or any later rebuild
+        /// — e.g. <c>RespawnController</c>'s no-save fallback). Places the Attendant in
+        /// a real, generated room a few hops from the entry — rather than trusting
+        /// wherever its Transform happened to be positioned at edit time, which has no
+        /// guarantee of landing inside instantiated geometry — and (re-)subscribes to
+        /// the newly-instantiated doors, since the old ones no longer exist.
+        /// </summary>
+        private void OnLevelBuilt(RoomGraph graph)
+        {
+            List<Guid> nearEntry = RoomGraphPathfinder.GetNodesWithinHops(graph, graph.EntryNodeId, Mathf.Max(_config.TerritoryRoomRadius, 1));
+            _homeNodeId = nearEntry.Count > 1 ? nearEntry[1] : nearEntry[0];
+            _currentPatrolNodeId = _homeNodeId;
+
+            if (_levelBuilder.TryGetRoomWorldPosition(_homeNodeId, out Vector3 homePosition))
+            {
+                _characterController.enabled = false;
+                transform.position = homePosition;
+                _characterController.enabled = true;
+            }
+
+            _pathWaypoints.Clear();
+            _waypointIndex = 0;
+            _unstickTimer = 0f;
+            ResetStuckTracking();
+
+            UnsubscribeFromDoors();
+            SubscribeToDoors();
         }
 
         private void SubscribeToDoors()
@@ -249,8 +292,22 @@ namespace EndlessRooms.AI
             EnsurePathTo(nearestToTarget);
         }
 
+        private Vector3 _stuckCheckPosition;
+        private float _stuckTimer;
+        private float _unstickTimer;
+        private int _unstickDirectionSign = 1;
+        private const float StuckDetectionThresholdSeconds = 1.2f;
+        private const float StuckMinProgressMeters = 0.15f;
+        private const float UnstickDurationSeconds = 0.6f;
+
         private void FollowWaypoints(float speed)
         {
+            if (_unstickTimer > 0f)
+            {
+                PerformUnstickStrafe(speed);
+                return;
+            }
+
             if (_pathWaypoints.Count == 0 || _waypointIndex >= _pathWaypoints.Count)
             {
                 _pathWaypoints.Clear();
@@ -271,12 +328,93 @@ namespace EndlessRooms.AI
                     _waypointIndex = 0;
                 }
 
+                ResetStuckTracking();
                 return;
             }
 
             Vector3 moveDirection = toWaypoint.normalized;
             transform.forward = moveDirection;
-            _characterController.Move(moveDirection * speed * Time.deltaTime);
+            OpenBlockingDoor(moveDirection);
+
+            Vector3 motion = moveDirection * speed * Time.deltaTime;
+            _characterController.Move(motion);
+
+            TrackStuckProgress();
+        }
+
+        /// <summary>
+        /// Straight-line waypoint following (no navmesh, per the design doc's
+        /// deliberate MVP scope) can clip a wall corner near a door opening and get
+        /// permanently wedged — confirmed via debug logging: collisionFlags stuck
+        /// non-zero with zero net position change for many seconds. Rather than
+        /// building real obstacle avoidance, this detects "no progress for over a
+        /// second while actively trying to move" and strafes perpendicular to the
+        /// blocked direction for a short burst, alternating sides on repeated
+        /// failures, then forces a fresh path calculation from wherever it ends up.
+        /// </summary>
+        private void TrackStuckProgress()
+        {
+            float distanceSinceLastCheck = Vector3.Distance(transform.position, _stuckCheckPosition);
+            if (distanceSinceLastCheck >= StuckMinProgressMeters)
+            {
+                ResetStuckTracking();
+                return;
+            }
+
+            _stuckTimer += Time.deltaTime;
+            if (_stuckTimer < StuckDetectionThresholdSeconds)
+            {
+                return;
+            }
+
+            _unstickTimer = UnstickDurationSeconds;
+            _unstickDirectionSign *= -1;
+            ResetStuckTracking();
+        }
+
+        private void ResetStuckTracking()
+        {
+            _stuckCheckPosition = transform.position;
+            _stuckTimer = 0f;
+        }
+
+        private void PerformUnstickStrafe(float speed)
+        {
+            _unstickTimer -= Time.deltaTime;
+
+            Vector3 strafeDirection = Vector3.Cross(Vector3.up, transform.forward).normalized * _unstickDirectionSign;
+            _characterController.Move(strafeDirection * speed * Time.deltaTime);
+
+            if (_unstickTimer <= 0f)
+            {
+                _pathWaypoints.Clear();
+                _waypointIndex = 0;
+                ResetStuckTracking();
+            }
+        }
+
+        /// <summary>
+        /// The Attendant reacts to doors the player opens (<see cref="OnDoorToggled"/>),
+        /// but that's not enough on its own — patrol/chase paths cross rooms via doors
+        /// that start closed, and a closed door's panel is a solid collider spanning
+        /// the full wall height, which fully blocks <see cref="CharacterController.Move"/>
+        /// with no way through. So it opens a closed, unlocked door directly ahead of it
+        /// the same way a player does: through <see cref="Door.Interact"/>, the same
+        /// <see cref="ToggleDoorCommand"/> path — not a special AI-only shortcut.
+        /// </summary>
+        private void OpenBlockingDoor(Vector3 moveDirection)
+        {
+            float probeDistance = _config.WaypointArrivalRadius + 1.5f;
+            if (!Physics.Raycast(_eyes.position, moveDirection, out RaycastHit hit, probeDistance))
+            {
+                return;
+            }
+
+            Door door = hit.collider.GetComponentInParent<Door>();
+            if (door != null && !door.IsOpen && !door.IsLocked)
+            {
+                door.Interact(new InteractionContext(gameObject));
+            }
         }
 
         private Vector3 NodeToWorld(Guid nodeId)

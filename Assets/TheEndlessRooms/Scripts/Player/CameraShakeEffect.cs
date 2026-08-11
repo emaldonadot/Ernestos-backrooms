@@ -12,9 +12,9 @@ namespace EndlessRooms.Player
     public sealed class CameraShakeEffect : MonoBehaviour
     {
         [SerializeField] private Transform _shakeTarget;
-        [SerializeField] private float _captureShakeMagnitude = 0.15f;
-        [SerializeField] private float _captureShakeDuration = 0.5f;
-        [SerializeField] private float _decaySpeed = 4f;
+        [SerializeField] private float _captureShakeMagnitude = 0.4f;
+        [SerializeField] private float _captureShakeDuration = 0.8f;
+        [SerializeField] private float _decaySpeed = 3f;
 
         private Vector3 _localOrigin;
         private float _currentMagnitude;

@@ -17,6 +17,7 @@ namespace EndlessRooms.Persistence
         [SerializeField] private EndlessRooms.World.ProceduralLevelBuilder _levelBuilder;
         [SerializeField] private Transform _player;
         [SerializeField] private CharacterController _playerCharacterController;
+        [SerializeField] private float _respawnDelaySeconds = 0.35f;
 
         private void OnEnable()
         {
@@ -28,12 +29,25 @@ namespace EndlessRooms.Persistence
             GameEvents.PlayerCaptured -= OnPlayerCaptured;
         }
 
+        /// <summary>
+        /// A brief delay before the actual teleport — otherwise the capture camera
+        /// shake (<see cref="EndlessRooms.Player.CameraShakeEffect"/>) fires the same
+        /// frame the view gets yanked to the entry room, and the instant scene change
+        /// swallows whatever the player might have noticed of the shake.
+        /// </summary>
         private void OnPlayerCaptured()
         {
+            StartCoroutine(RespawnAfterDelay());
+        }
+
+        private System.Collections.IEnumerator RespawnAfterDelay()
+        {
+            yield return new WaitForSeconds(_respawnDelaySeconds);
+
             if (_saveService != null && _saveService.HasSaveFile())
             {
                 _saveService.Load();
-                return;
+                yield break;
             }
 
             RespawnAtEntry();

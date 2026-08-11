@@ -115,6 +115,18 @@ namespace EndlessRooms.Player
 
         private void HandleMovement()
         {
+            if (IsHidden)
+            {
+                // A hiding spot should actually hide you — otherwise there's nothing
+                // stopping you from stepping right back out while still flagged as
+                // concealed. Freezes horizontal movement entirely; look is untouched
+                // so you can still peek around from a fixed spot.
+                _currentVelocity.x = 0f;
+                _currentVelocity.z = 0f;
+                NoiseLevel = 0f;
+                return;
+            }
+
             Vector2 moveInput = _moveAction != null ? _moveAction.action.ReadValue<Vector2>() : Vector2.zero;
             bool sprintHeld = _sprintAction != null && _sprintAction.action.IsPressed();
 

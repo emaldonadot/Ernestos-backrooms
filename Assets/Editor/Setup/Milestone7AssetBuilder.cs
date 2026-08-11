@@ -57,7 +57,9 @@ namespace EndlessRooms.EditorSetup
             BuildSaveLoadAndRespawn(levelGo, playerGo, actionRefs);
             BuildHidingSpots(playerGo.transform);
             BuildAttendant(levelGo, attendantConfig, playerGo.transform);
+            BuildPickupItem(playerGo.transform);
             BuildInteractionPromptUi(interactionCaster);
+            BuildMapUi(actionRefs);
 
             _ = cameraShake;
 
@@ -90,6 +92,9 @@ namespace EndlessRooms.EditorSetup
             public InputActionReference Interact;
             public InputActionReference QuickSave;
             public InputActionReference QuickLoad;
+            public InputActionReference ToggleMap;
+            public InputActionReference PanMap;
+            public InputActionReference ZoomMap;
         }
 
         private static ActionRefs LoadInputActionReferences()
@@ -116,7 +121,307 @@ namespace EndlessRooms.EditorSetup
                 Interact = Find("Interact"),
                 QuickSave = Find("QuickSave"),
                 QuickLoad = Find("QuickLoad"),
+                ToggleMap = Find("ToggleMap"),
+                PanMap = Find("PanMap"),
+                ZoomMap = Find("ZoomMap"),
             };
+        }
+
+        /// <summary>
+        /// Adds the Field Log map UI (missed when this scene was first built — the
+        /// data layer, MapBootstrap, was wired up, but the actual viewable canvas
+        /// wasn't) to whichever scene is currently open in the Editor. A menu command
+        /// rather than part of the headless BuildScene path specifically so it can be
+        /// run live, from inside an already-open Editor session, without a competing
+        /// batch process fighting over the same project.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Add Map UI To Current Scene")]
+        public static void AddMapUiToCurrentScene()
+        {
+            var actionRefs = LoadInputActionReferences();
+            BuildMapUi(actionRefs);
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log("[Milestone7AssetBuilder] Added Field Log map UI to the current scene. Save the scene (Ctrl+S) to keep it.");
+        }
+
+        /// <summary>
+        /// Recolors the shared ModularRoomBase prefab's four walls yellow — a one-time,
+        /// persistent change (unlike the per-scene menu commands above) since every
+        /// room in every scene instantiates this same prefab. Requested during
+        /// Milestone 7 testing: doors were visually indistinguishable from walls in
+        /// the grey-box, making door behavior hard to evaluate. See
+        /// <c>EndlessRooms.World.DebugColor</c> for the rest of the color scheme
+        /// (doors brown, Attendant red, hiding spots blue, pickups green).
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Recolor Shared Wall Prefab (One-Time)")]
+        public static void RecolorSharedWallPrefab()
+        {
+            const string prefabPath = "Assets/TheEndlessRooms/Prefabs/ModularRoomBase.prefab";
+            GameObject contents = PrefabUtility.LoadPrefabContents(prefabPath);
+
+            foreach (Direction direction in System.Enum.GetValues(typeof(Direction)))
+            {
+                GameObject wall = contents.GetComponent<RoomInstance>().GetWall(direction);
+                if (wall != null)
+                {
+                    DebugColor.Apply(wall, DebugColor.Wall);
+                }
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+            Debug.Log("[Milestone7AssetBuilder] Recolored ModularRoomBase's walls yellow.");
+        }
+
+        /// <summary>
+        /// Splits each of ModularRoomBase's four full-width wall panels into a
+        /// door-width center "gap" segment (the one <see cref="RoomInstance.OpenWall"/>
+        /// still toggles — same <see cref="RoomInstance"/> serialized reference, just
+        /// resized, so no C# API change needed) plus two permanently-solid side
+        /// segments that are never referenced by <see cref="RoomInstance"/> and so
+        /// never get deactivated. Fixes a real gameplay bug reported during Milestone 7
+        /// playtesting: <see cref="RoomInstance.OpenWall"/> was deactivating the
+        /// *entire* 6m wall for any connection, not just a 2m door-sized gap, so every
+        /// connected room pair had no interior wall at all — you could walk straight
+        /// past a closed door anywhere along that wall, bypassing it (and The
+        /// Attendant, and hiding, and any tension the level design was supposed to
+        /// create) entirely. A one-time, persistent prefab change, like the recolor
+        /// above — every room in every scene instantiates this same prefab.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Split Walls Into Door-Sized Gaps (One-Time)")]
+        public static void SplitWallsIntoDoorSizedGaps()
+        {
+            const string prefabPath = "Assets/TheEndlessRooms/Prefabs/ModularRoomBase.prefab";
+            const float doorWidth = 2f;
+            GameObject contents = PrefabUtility.LoadPrefabContents(prefabPath);
+            var roomInstance = contents.GetComponent<RoomInstance>();
+
+            foreach (Direction direction in System.Enum.GetValues(typeof(Direction)))
+            {
+                GameObject gapWall = roomInstance.GetWall(direction);
+                if (gapWall == null)
+                {
+                    continue;
+                }
+
+                Transform gapTransform = gapWall.transform;
+                Vector3 originalScale = gapTransform.localScale;
+                Vector3 originalPosition = gapTransform.localPosition;
+                bool runsAlongX = direction is Direction.North or Direction.South;
+                float span = runsAlongX ? originalScale.x : originalScale.z;
+                float sideWidth = (span - doorWidth) / 2f;
+
+                gapTransform.localScale = runsAlongX
+                    ? new Vector3(doorWidth, originalScale.y, originalScale.z)
+                    : new Vector3(originalScale.x, originalScale.y, doorWidth);
+                gapWall.name = $"Wall_{direction}_Gap";
+
+                float sideOffset = sideWidth / 2f + doorWidth / 2f;
+                CreateWallSidePiece(gapWall, $"Wall_{direction}_Left", originalPosition, originalScale, runsAlongX, sideWidth, -sideOffset);
+                CreateWallSidePiece(gapWall, $"Wall_{direction}_Right", originalPosition, originalScale, runsAlongX, sideWidth, sideOffset);
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            PrefabUtility.UnloadPrefabContents(contents);
+            Debug.Log("[Milestone7AssetBuilder] Split all four walls into door-sized gap + permanently-solid side pieces.");
+        }
+
+        private static void CreateWallSidePiece(GameObject referenceWall, string name, Vector3 originalPosition, Vector3 originalScale, bool runsAlongX, float sideWidth, float offset)
+        {
+            GameObject piece = Object.Instantiate(referenceWall, referenceWall.transform.parent);
+            piece.name = name;
+
+            Vector3 position = originalPosition;
+            Vector3 scale;
+            if (runsAlongX)
+            {
+                position.x += offset;
+                scale = new Vector3(sideWidth, originalScale.y, originalScale.z);
+            }
+            else
+            {
+                position.z += offset;
+                scale = new Vector3(originalScale.x, originalScale.y, sideWidth);
+            }
+
+            piece.transform.localPosition = position;
+            piece.transform.localScale = scale;
+        }
+
+        [MenuItem("Tools/The Endless Rooms/Fix Attendant CharacterController In Current Scene")]
+        public static void FixAttendantCharacterControllerInCurrentScene()
+        {
+            GameObject attendantGo = GameObject.Find("TheAttendant");
+            if (attendantGo == null)
+            {
+                Debug.LogError("[Milestone7AssetBuilder] Could not find 'TheAttendant' in the current scene.");
+                return;
+            }
+
+            var characterController = attendantGo.GetComponent<CharacterController>();
+            if (characterController == null)
+            {
+                Debug.LogError("[Milestone7AssetBuilder] 'TheAttendant' has no CharacterController.");
+                return;
+            }
+
+            characterController.height = 1.8f;
+            characterController.center = new Vector3(0f, 0.9f, 0f);
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Debug.Log("[Milestone7AssetBuilder] Fixed TheAttendant's CharacterController (height 1.8, center Y 0.9). Save the scene (Ctrl+S) to keep it.");
+        }
+
+        private static void BuildMapUi(ActionRefs actionRefs)
+        {
+            var eventSystemGo = new GameObject("EventSystem");
+            eventSystemGo.AddComponent<UnityEngine.EventSystems.EventSystem>();
+            eventSystemGo.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+
+            var canvasGo = new GameObject("MapCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+            canvasGo.AddComponent<GraphicRaycaster>();
+
+            var mapRoot = new GameObject("MapRoot");
+            mapRoot.transform.SetParent(canvasGo.transform, false);
+            var mapRootRect = mapRoot.AddComponent<RectTransform>();
+            mapRootRect.anchorMin = new Vector2(0.1f, 0.1f);
+            mapRootRect.anchorMax = new Vector2(0.9f, 0.9f);
+            mapRootRect.sizeDelta = Vector2.zero;
+
+            var background = mapRoot.AddComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.75f);
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewport.transform.SetParent(mapRoot.transform, false);
+            var viewportRect = viewport.GetComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = new Vector2(0.7f, 1f);
+            viewportRect.sizeDelta = Vector2.zero;
+
+            var content = new GameObject("MapContent", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.GetComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0.5f, 0.5f);
+            contentRect.anchorMax = new Vector2(0.5f, 0.5f);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            var fieldLogViewGo = new GameObject("FieldLogView");
+            fieldLogViewGo.transform.SetParent(canvasGo.transform, false);
+            var fieldLogView = fieldLogViewGo.AddComponent<FieldLogView>();
+            var viewSo = new SerializedObject(fieldLogView);
+            viewSo.FindProperty("_mapRoot").objectReferenceValue = mapRoot;
+            viewSo.FindProperty("_content").objectReferenceValue = contentRect;
+            viewSo.FindProperty("_toggleMapAction").objectReferenceValue = actionRefs.ToggleMap;
+            viewSo.FindProperty("_panMapAction").objectReferenceValue = actionRefs.PanMap;
+            viewSo.FindProperty("_zoomMapAction").objectReferenceValue = actionRefs.ZoomMap;
+            viewSo.ApplyModifiedPropertiesWithoutUndo();
+
+            BuildMarkerPanel(mapRoot);
+
+            mapRoot.SetActive(false);
+        }
+
+        private static void BuildMarkerPanel(GameObject mapRoot)
+        {
+            var panelGo = new GameObject("MarkerPanel", typeof(RectTransform), typeof(VerticalLayoutGroup));
+            panelGo.transform.SetParent(mapRoot.transform, false);
+            var panelRect = panelGo.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.72f, 0f);
+            panelRect.anchorMax = new Vector2(1f, 1f);
+            panelRect.sizeDelta = Vector2.zero;
+
+            var layout = panelGo.GetComponent<VerticalLayoutGroup>();
+            layout.spacing = 4f;
+            layout.padding = new RectOffset(6, 6, 6, 6);
+            layout.childForceExpandHeight = false;
+
+            var typeButtons = new Button[System.Enum.GetValues(typeof(FieldMarkType)).Length];
+            for (int i = 0; i < typeButtons.Length; i++)
+            {
+                var typeName = ((FieldMarkType)i).ToString();
+                typeButtons[i] = CreateButton(panelGo.transform, $"Type_{typeName}", typeName);
+            }
+
+            var noteInputGo = new GameObject("NoteInput", typeof(RectTransform), typeof(Image), typeof(InputField));
+            noteInputGo.transform.SetParent(panelGo.transform, false);
+            noteInputGo.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 24f);
+            var noteInput = noteInputGo.GetComponent<InputField>();
+            var noteTextGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            noteTextGo.transform.SetParent(noteInputGo.transform, false);
+            var noteText = noteTextGo.GetComponent<Text>();
+            noteText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            noteText.color = Color.black;
+            StretchFull(noteTextGo.GetComponent<RectTransform>());
+            noteInput.textComponent = noteText;
+
+            Button addButton = CreateButton(panelGo.transform, "AddButton", "Add Marker Here");
+
+            var marksListRoot = new GameObject("MarksList", typeof(RectTransform), typeof(VerticalLayoutGroup));
+            marksListRoot.transform.SetParent(panelGo.transform, false);
+
+            GameObject rowTemplate = CreateMarkRowTemplate(marksListRoot.transform);
+
+            var panelComponent = panelGo.AddComponent<FieldMarkerPanel>();
+            var panelSo = new SerializedObject(panelComponent);
+            var typeButtonsProp = panelSo.FindProperty("_typeButtons");
+            typeButtonsProp.arraySize = typeButtons.Length;
+            for (int i = 0; i < typeButtons.Length; i++)
+            {
+                typeButtonsProp.GetArrayElementAtIndex(i).objectReferenceValue = typeButtons[i];
+            }
+
+            panelSo.FindProperty("_noteInput").objectReferenceValue = noteInput;
+            panelSo.FindProperty("_addButton").objectReferenceValue = addButton;
+            panelSo.FindProperty("_marksListRoot").objectReferenceValue = marksListRoot.transform;
+            panelSo.FindProperty("_markRowTemplate").objectReferenceValue = rowTemplate;
+            panelSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static GameObject CreateMarkRowTemplate(Transform parent)
+        {
+            var row = new GameObject("MarkRowTemplate", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            row.transform.SetParent(parent, false);
+            row.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 20f);
+
+            var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelGo.transform.SetParent(row.transform, false);
+            var label = labelGo.GetComponent<Text>();
+            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.color = Color.white;
+            label.fontSize = 12;
+
+            CreateButton(row.transform, "RemoveButton", "X");
+
+            return row;
+        }
+
+        private static Button CreateButton(Transform parent, string name, string label)
+        {
+            var buttonGo = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonGo.transform.SetParent(parent, false);
+            buttonGo.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 22f);
+            buttonGo.GetComponent<Image>().color = new Color(0.2f, 0.2f, 0.2f, 1f);
+
+            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(buttonGo.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.text = label;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.fontSize = 12;
+            StretchFull(textGo.GetComponent<RectTransform>());
+
+            return buttonGo.GetComponent<Button>();
+        }
+
+        private static void StretchFull(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.sizeDelta = Vector2.zero;
         }
 
         private static GameObject BuildLevelBuilder()
@@ -237,6 +542,8 @@ namespace EndlessRooms.EditorSetup
                 spotGo.transform.position = playerTransform.position + new Vector3(2f + i * 1.5f, 0.5f, -2f);
                 spotGo.transform.localScale = new Vector3(1f, 1f, 1f);
 
+                DebugColor.Apply(spotGo, DebugColor.HidingSpot);
+
                 var hidingSpot = spotGo.AddComponent<HidingSpot>();
                 var so = new SerializedObject(hidingSpot);
                 so.FindProperty("_saveId").stringValue = $"HidingSpot_{i}";
@@ -244,11 +551,28 @@ namespace EndlessRooms.EditorSetup
             }
         }
 
+        private static void BuildPickupItem(Transform playerTransform)
+        {
+            var pickupGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            pickupGo.name = "TestPickup";
+            pickupGo.transform.position = playerTransform.position + new Vector3(1f, 0.5f, 1f);
+            pickupGo.transform.localScale = Vector3.one * 0.4f;
+            pickupGo.GetComponent<Collider>().isTrigger = true;
+            DebugColor.Apply(pickupGo, DebugColor.Pickup);
+
+            var pickup = pickupGo.AddComponent<PickupTestItem>();
+            var so = new SerializedObject(pickup);
+            so.FindProperty("_itemName").stringValue = "Rusted Key";
+            so.FindProperty("_saveId").stringValue = "TestPickup_Rusted_Key";
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         private static void BuildAttendant(GameObject levelGo, AttendantConfig config, Transform playerTransform)
         {
             var attendantGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             attendantGo.name = "TheAttendant";
             attendantGo.transform.position = playerTransform.position + new Vector3(-4f, 0f, -4f);
+            DebugColor.Apply(attendantGo, DebugColor.Attendant);
 
             // The capsule primitive's own CapsuleCollider would double up with the
             // CharacterController's capsule; keep the mesh for visibility, remove the
@@ -256,9 +580,9 @@ namespace EndlessRooms.EditorSetup
             Object.DestroyImmediate(attendantGo.GetComponent<CapsuleCollider>());
 
             var characterController = attendantGo.AddComponent<CharacterController>();
-            characterController.height = 2f;
+            characterController.height = 1.8f;
             characterController.radius = 0.4f;
-            characterController.center = new Vector3(0f, 1f, 0f);
+            characterController.center = new Vector3(0f, 0.9f, 0f);
 
             var eyes = new GameObject("Eyes").transform;
             eyes.SetParent(attendantGo.transform, false);

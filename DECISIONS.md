@@ -2,6 +2,21 @@
 
 Append-only log of decisions with dates and rationale. Revisit an entry by adding a new dated entry that supersedes it rather than editing history.
 
+## 2026-08-11 — Milestone 7 Play-mode bug fixes, found via user testing
+
+A round of real Play-mode testing (impossible to do headlessly in this environment) surfaced several bugs no amount of EditMode testing or code review caught. Each was root-caused with temporary debug logging, fixed, then verified before removing the logging:
+
+- **`AttendantController` never moved.** It resolved its home room and subscribed to doors in `OnEnable`, which fires before `LevelPlayerSpawner.Start()` has generated the level — `ProceduralLevelBuilder.LastGraph` was still null. Fixed by moving that setup into a handler for `ProceduralLevelBuilder.LevelBuilt`, which fires after the level actually exists (and again on any rebuild, e.g. `RespawnController`'s no-save fallback).
+- **The Attendant's `CharacterController` clipped the ceiling.** Height 2 with center Y 1 put the capsule's top edge right at the 3m wall height. Matched it to the player's already-proven shape (height 1.8, center Y 0.9).
+- **It could open closed doors it detected via sound but never opened one blocking its own path**, so it walked into closed doors and got permanently stuck (`collisionFlags` Sides+Above, zero net movement). Fixed by having it open a closed, unlocked door directly ahead via `Door.Interact` — the same path a player uses, not an AI-only shortcut.
+- **Straight-line waypoint following could wedge on a wall corner with no recovery.** Added stuck detection (no progress for 1.2s while actively moving) that triggers a brief perpendicular strafe, alternating sides on repeated failures, then forces a fresh path calculation.
+- **Hiding didn't actually hide you.** `HidingSpot` toggled a flag that blocked visual detection, but `PlayerController` never stopped responding to movement input — you could just walk away while still flagged hidden. Fixed by freezing horizontal movement while `IsHidden` (look is untouched, so you can still peek from a fixed spot).
+- **`RoomInstance.OpenWall` deactivated the *entire* 6m wall for any connection**, not a door-sized gap — so every connected room pair had no interior wall at all; you could walk past a closed door anywhere along that opening. This undermined the entire stealth loop (hiding/closing doors/evading meant nothing if walls didn't contain movement), so it was fixed directly rather than deferred as originally flagged. Each wall in `ModularRoomBase.prefab` is now split into a door-width "gap" segment (still the one `RoomInstance.OpenWall` toggles) plus two permanently-solid side segments.
+- **The door panel itself only covered half that gap.** `ProceduralLevelBuilder.PlaceDoor` positioned the hinge at the gap's *center*, but the panel only extends outward from the hinge by one door-width in a single direction — it doesn't straddle the hinge. Moved the hinge to the gap's edge so the closed panel spans the whole opening.
+- **Capture camera shake wasn't noticeable.** Increased magnitude/duration (0.15→0.4, 0.5s→0.8s) and added a 0.35s delay before `RespawnController`'s teleport, so the shake gets a moment to play against a still scene instead of being masked by an instant scene change.
+
+Also added a debug color scheme (`EndlessRooms.World.DebugColor`) requested during testing — walls yellow, doors brown, the Attendant red, hiding spots blue, pickups green — applied directly to the shared prefabs/runtime spawn code as the current placeholder look; real materials are Milestone 8's art pass, not this.
+
 ## 2026-08-07 — Milestone 7 kickoff: PR #5 and PR #6 merged; chase/capture FX comfort decision
 
 PR #5 (Milestone 5: Persistence) and PR #6 (Milestone 6: VR Platform Support) were both merged into `main` on the user's explicit "please merge and continue" — confirmed via a follow-up question specifically for PR #5's previously-unverified `Door.OnEnable` save/load check (user confirmed they'd tested it). Milestone 7 (Horror Prototype) started immediately after per the user's "continue."
