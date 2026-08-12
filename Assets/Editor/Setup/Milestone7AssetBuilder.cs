@@ -69,7 +69,7 @@ namespace EndlessRooms.EditorSetup
             Debug.Log($"[Milestone7AssetBuilder] Built and saved '{ScenePath}'.");
         }
 
-        private static AttendantConfig LoadOrCreateAttendantConfig()
+        internal static AttendantConfig LoadOrCreateAttendantConfig()
         {
             var existing = AssetDatabase.LoadAssetAtPath<AttendantConfig>(AttendantConfigPath);
             if (existing != null)
@@ -449,6 +449,13 @@ namespace EndlessRooms.EditorSetup
             }
 
             so.FindProperty("_buildOnStart").boolValue = false;
+
+            var doorMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/TheEndlessRooms/Art/Materials/Door_Office.mat");
+            if (doorMaterial != null)
+            {
+                so.FindProperty("_doorMaterial").objectReferenceValue = doorMaterial;
+            }
+
             so.ApplyModifiedPropertiesWithoutUndo();
 
             return levelGo;
@@ -567,7 +574,7 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void BuildAttendant(GameObject levelGo, AttendantConfig config, Transform playerTransform)
+        internal static void BuildAttendant(GameObject levelGo, AttendantConfig config, Transform playerTransform)
         {
             var attendantGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             attendantGo.name = "TheAttendant";

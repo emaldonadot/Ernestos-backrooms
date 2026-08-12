@@ -24,6 +24,9 @@ namespace EndlessRooms.Core
         /// <summary>Raised by Milestone 7's Attendant when it catches the player during Chase. <c>RespawnController</c> (Persistence) reloads the last checkpoint save in response.</summary>
         public static event Action PlayerCaptured;
 
+        /// <summary>Raised by a <c>FieldNote</c> (World) on interact, carrying its text fragment. <c>FieldNoteUI</c> (UI) displays it — decoupled the same way as RoomEntered/LevelCompleted, so EndlessRooms.UI has no dependency on EndlessRooms.World.</summary>
+        public static event Action<string> FieldNoteOpened;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -47,6 +50,11 @@ namespace EndlessRooms.Core
         public static void RaisePlayerCaptured()
         {
             PlayerCaptured?.Invoke();
+        }
+
+        public static void RaiseFieldNoteOpened(string fragmentText)
+        {
+            FieldNoteOpened?.Invoke(fragmentText);
         }
     }
 }

@@ -26,6 +26,10 @@ namespace EndlessRooms.World
         [SerializeField] private float _wallThickness = 0.2f;
         [SerializeField] private float _doorWidth = 2f;
 
+        [Header("Materials")]
+        [Tooltip("Leave unset to keep the flat DebugColor.Door placeholder. Doors are built fresh at runtime (unlike walls, which share one prefab), so a real material has to be assigned here rather than fixed once on a shared asset.")]
+        [SerializeField] private Material _doorMaterial;
+
         [Header("Behavior")]
         [SerializeField] private bool _buildOnStart = true;
 
@@ -35,6 +39,7 @@ namespace EndlessRooms.World
 
         public RoomGraph LastGraph => _lastGraph;
         public int Seed => _seed;
+        public float CellSize => _cellSize;
 
         /// <summary>The door on the connection leading to the exit room, always set once <see cref="BuildLevel"/> completes — <see cref="RoomGraphValidator"/> guarantees the exit is reachable, so a connection touching it always exists.</summary>
         public Door ExitDoor { get; private set; }
@@ -228,7 +233,15 @@ namespace EndlessRooms.World
             panel.transform.SetParent(hinge.transform, worldPositionStays: false);
             panel.transform.localPosition = hingeToPanelOffset;
             panel.transform.localScale = panelScale;
-            DebugColor.Apply(panel, DebugColor.Door);
+
+            if (_doorMaterial != null)
+            {
+                panel.GetComponent<Renderer>().sharedMaterial = _doorMaterial;
+            }
+            else
+            {
+                DebugColor.Apply(panel, DebugColor.Door);
+            }
 
             var door = hinge.AddComponent<Door>();
             door.Initialize(hinge.transform);
