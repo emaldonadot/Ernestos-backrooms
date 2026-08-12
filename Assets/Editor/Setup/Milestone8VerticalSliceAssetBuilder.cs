@@ -141,26 +141,33 @@ namespace EndlessRooms.EditorSetup
                 ceilingLight.localPosition = pos;
             }
 
-            AddCeilingLight(contents.transform, "MezzanineLight", new Vector3(0f, 5.3f, 1.5f));
+            // Mezzanine height is deliberately lower than "half the Atrium's height" —
+            // it needs to be reachable by a ramp that stays under the player's
+            // CharacterController slope limit (45 degrees; this game has no jump, so
+            // anything steeper, or discrete steps taller than the ~0.3m default step
+            // offset, is simply impassable) while still fitting its horizontal run
+            // inside the room's 6x6 footprint.
+            const float mezzanineHeight = 3.6f;
+
+            AddCeilingLight(contents.transform, "MezzanineLight", new Vector3(0f, mezzanineHeight + 0.3f, 1.5f));
 
             AddUpperWall(contents.transform, "UpperWall_North", new Vector3(0f, (WallHeight + AtriumHeight) / 2f, 3f), new Vector3(6f, AtriumHeight - WallHeight, 0.2f));
             AddUpperWall(contents.transform, "UpperWall_South", new Vector3(0f, (WallHeight + AtriumHeight) / 2f, -3f), new Vector3(6f, AtriumHeight - WallHeight, 0.2f));
             AddUpperWall(contents.transform, "UpperWall_East", new Vector3(3f, (WallHeight + AtriumHeight) / 2f, 0f), new Vector3(0.2f, AtriumHeight - WallHeight, 6f));
             AddUpperWall(contents.transform, "UpperWall_West", new Vector3(-3f, (WallHeight + AtriumHeight) / 2f, 0f), new Vector3(0.2f, AtriumHeight - WallHeight, 6f));
 
-            // Mezzanine walkway along the north side, roughly at half the Atrium's height.
-            AddUpperWall(contents.transform, "Mezzanine_Floor", new Vector3(0f, 5f, 1.5f), new Vector3(6f, 0.2f, 2.8f));
-            AddUpperWall(contents.transform, "Mezzanine_Railing", new Vector3(0f, 5.5f, 0.15f), new Vector3(6f, 0.9f, 0.1f));
+            // Mezzanine walkway along the north side.
+            AddUpperWall(contents.transform, "Mezzanine_Floor", new Vector3(0f, mezzanineHeight, 1.5f), new Vector3(6f, 0.2f, 2.8f));
+            AddUpperWall(contents.transform, "Mezzanine_Railing", new Vector3(0f, mezzanineHeight + 0.5f, 0.15f), new Vector3(6f, 0.9f, 0.1f));
 
-            // A "broken escalator" as a rough, uneven flight of blocky steps along the
-            // west wall, climbing from the ground floor up to the mezzanine landing —
-            // chunky and irregular on purpose, reading as disused rather than a clean
-            // modern staircase.
-            AddUpperWall(contents.transform, "Escalator_Step1", new Vector3(-2f, 0.5f, -2.5f), new Vector3(1.5f, 1f, 0.8f));
-            AddUpperWall(contents.transform, "Escalator_Step2", new Vector3(-2f, 1.5f, -1.8f), new Vector3(1.5f, 1f, 0.8f));
-            AddUpperWall(contents.transform, "Escalator_Step3", new Vector3(-2f, 2.5f, -1.1f), new Vector3(1.5f, 1f, 0.8f));
-            AddUpperWall(contents.transform, "Escalator_Step4", new Vector3(-2f, 3.5f, -0.4f), new Vector3(1.5f, 1f, 0.8f));
-            AddUpperWall(contents.transform, "Escalator_Step5", new Vector3(-2f, 4.5f, 0.3f), new Vector3(1.5f, 1f, 0.8f));
+            // A "broken escalator" as a single continuous ramp along the west wall —
+            // rough/disused in flavor (no handrail, bare incline), but it has to be an
+            // actually walkable slope rather than literal steps: see the height note
+            // above. Rise/run here (3.7 / 4.5, ~39 degrees) stays comfortably under the
+            // slope limit while the ramp's top lands right at the mezzanine's edge.
+            Vector3 rampStart = new(-2f, 0f, -2.7f);
+            Vector3 rampEnd = new(-2f, mezzanineHeight + 0.1f, 1.8f);
+            AddRamp(contents.transform, "Escalator_Ramp", rampStart, rampEnd, width: 1.8f, thickness: 0.3f);
 
             PrefabUtility.SaveAsPrefabAsset(contents, AtriumRoomPrefabPath);
             Object.DestroyImmediate(contents);
@@ -230,6 +237,27 @@ namespace EndlessRooms.EditorSetup
         private static void AddUpperWall(Transform parent, string name, Vector3 localPosition, Vector3 scale)
         {
             AddObstacle(parent, name, localPosition, scale);
+        }
+
+        /// <summary>
+        /// A single tilted box spanning <paramref name="start"/> to <paramref name="end"/> —
+        /// its local Z axis (length) points along that direction via
+        /// <see cref="Quaternion.LookRotation(Vector3)"/> rather than a hand-picked Euler
+        /// angle, so the slope is exactly whatever the two points imply, no separate
+        /// angle computation to get wrong.
+        /// </summary>
+        private static void AddRamp(Transform parent, string name, Vector3 start, Vector3 end, float width, float thickness)
+        {
+            var ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ramp.name = name;
+            ramp.transform.SetParent(parent, false);
+
+            Vector3 direction = end - start;
+            float length = direction.magnitude;
+
+            ramp.transform.localPosition = (start + end) / 2f;
+            ramp.transform.localRotation = Quaternion.LookRotation(direction.normalized);
+            ramp.transform.localScale = new Vector3(width, thickness, length);
         }
 
         /// <summary>
