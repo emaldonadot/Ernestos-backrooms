@@ -137,5 +137,43 @@ namespace EndlessRooms.EditorSetup
             scenes.Add(new EditorBuildSettingsScene(path, true));
             EditorBuildSettings.scenes = scenes.ToArray();
         }
+
+        /// <summary>
+        /// One-off standalone APK build of just this scene, for sideloading onto a Quest
+        /// directly (outside the normal Build-and-Run-over-USB flow) — e.g. when USB
+        /// debugging authorization is being finicky, a plain installable file is a
+        /// useful fallback. Builds/ is gitignored (*.apk is too, but the folder itself
+        /// isn't tracked either) since this is a generated artifact, not source.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Build M8 VR Test Scene APK")]
+        public static void BuildApk()
+        {
+            const string outputPath = "Builds/TheEndlessRooms_M8_VR.apk";
+            string outputDir = System.IO.Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(outputDir) && !System.IO.Directory.Exists(outputDir))
+            {
+                System.IO.Directory.CreateDirectory(outputDir);
+            }
+
+            var buildPlayerOptions = new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                options = BuildOptions.None,
+            };
+
+            UnityEditor.Build.Reporting.BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            UnityEditor.Build.Reporting.BuildSummary summary = report.summary;
+
+            if (summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            {
+                Debug.Log($"[Milestone8VRAssetBuilder] Build succeeded: '{summary.outputPath}' ({summary.totalSize} bytes).");
+            }
+            else
+            {
+                Debug.LogError($"[Milestone8VRAssetBuilder] Build {summary.result}: {summary.totalErrors} error(s). See the full log above for details.");
+            }
+        }
     }
 }

@@ -7,6 +7,9 @@ using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEditor.PackageManager.UI;
 using UnityEngine;
+using UnityEngine.XR.OpenXR;
+using UnityEngine.XR.OpenXR.Features.Interactions;
+using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
 
 namespace EndlessRooms.EditorSetup
 {
@@ -108,6 +111,52 @@ namespace EndlessRooms.EditorSetup
             Debug.Log(imported
                 ? $"[Milestone6Bootstrap] Imported '{starterAssets.displayName}' to '{starterAssets.importPath}'."
                 : "[Milestone6Bootstrap] Sample import reported failure.");
+        }
+
+        /// <summary>
+        /// The manual step <see cref="ConfigurePlatform"/>'s doc comment deferred to
+        /// Project Settings' UI, done via the actual OpenXR editor API instead — turns
+        /// out it was never actually done on this machine despite docs/QUEST_TESTING.md
+        /// claiming otherwise: Assets/XR/Settings/OpenXR Package Settings.asset still had
+        /// both features disabled for Android, which would show a black screen or crash
+        /// on launch per that doc's own warning. Doing it via GetFeature&lt;T&gt;() rather
+        /// than hand-editing the YAML directly, since the asset stores a list of feature
+        /// instances alongside other per-platform bookkeeping this API already knows how
+        /// to update correctly.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Enable Meta Quest OpenXR Features (Android)")]
+        public static void EnableMetaQuestFeaturesForAndroid()
+        {
+            var settings = OpenXRSettings.GetSettingsForBuildTargetGroup(BuildTargetGroup.Android);
+            if (settings == null)
+            {
+                Debug.LogError("[Milestone6Bootstrap] No OpenXRSettings found for the Android build target group.");
+                return;
+            }
+
+            var metaQuestFeature = settings.GetFeature<MetaQuestFeature>();
+            if (metaQuestFeature != null)
+            {
+                metaQuestFeature.enabled = true;
+            }
+            else
+            {
+                Debug.LogError("[Milestone6Bootstrap] MetaQuestFeature not found in Android OpenXR settings.");
+            }
+
+            var touchPlusProfile = settings.GetFeature<MetaQuestTouchPlusControllerProfile>();
+            if (touchPlusProfile != null)
+            {
+                touchPlusProfile.enabled = true;
+            }
+            else
+            {
+                Debug.LogError("[Milestone6Bootstrap] MetaQuestTouchPlusControllerProfile not found in Android OpenXR settings.");
+            }
+
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[Milestone6Bootstrap] Enabled Meta Quest Support + Touch Plus Controller Profile for Android.");
         }
 
         /// <summary>

@@ -14,6 +14,7 @@ Assets/_Recovery.meta
 [Ll]ogs/
 [Uu]serSettings/
 [Mm]emoryCaptures/
+.utmp/
 
 # Asset meta backups
 *.tmp
