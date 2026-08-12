@@ -291,6 +291,8 @@ namespace EndlessRooms.EditorSetup
             var corridor = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/Corridor.asset");
             var junction = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/Junction.asset");
             var deadEnd = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/DeadEnd.asset");
+            var storage = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/Storage.asset");
+            var officeCluster = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/OfficeCluster.asset");
 
             var levelGo = new GameObject("ProceduralLevel");
             var builder = levelGo.AddComponent<ProceduralLevelBuilder>();
@@ -301,7 +303,7 @@ namespace EndlessRooms.EditorSetup
             so.FindProperty("_exitDefinition").objectReferenceValue = exit;
 
             SerializedProperty fillers = so.FindProperty("_fillerDefinitions");
-            var fillerDefinitions = new[] { entry, corridor, junction, deadEnd };
+            var fillerDefinitions = new[] { entry, corridor, junction, deadEnd, storage, officeCluster }.Where(d => d != null).ToArray();
             fillers.arraySize = fillerDefinitions.Length;
             for (int i = 0; i < fillerDefinitions.Length; i++)
             {
@@ -314,6 +316,12 @@ namespace EndlessRooms.EditorSetup
             if (doorMaterial != null)
             {
                 so.FindProperty("_doorMaterial").objectReferenceValue = doorMaterial;
+            }
+
+            var atriumPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/TheEndlessRooms/Prefabs/Atrium_Room.prefab");
+            if (atriumPrefab != null)
+            {
+                so.FindProperty("_landmarkRoomPrefab").objectReferenceValue = atriumPrefab;
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();

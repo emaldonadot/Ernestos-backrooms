@@ -30,6 +30,11 @@ namespace EndlessRooms.World
         [Tooltip("Leave unset to keep the flat DebugColor.Door placeholder. Doors are built fresh at runtime (unlike walls, which share one prefab), so a real material has to be assigned here rather than fixed once on a shared asset.")]
         [SerializeField] private Material _doorMaterial;
 
+        [Header("Landmark")]
+        [Tooltip("Leave unset to skip landmark placement entirely. When set, the most-connected eligible room (never entry/exit, never closer than _landmarkMinHopsFromEntry) is instantiated from this prefab instead of its normal RoomDefinition's — see LandmarkNodeSelector.")]
+        [SerializeField] private GameObject _landmarkRoomPrefab;
+        [SerializeField] [Min(1)] private int _landmarkMinHopsFromEntry = 2;
+
         [Header("Behavior")]
         [SerializeField] private bool _buildOnStart = true;
 
@@ -131,17 +136,24 @@ namespace EndlessRooms.World
 
         private void InstantiateRooms()
         {
+            Guid? landmarkNodeId = _landmarkRoomPrefab != null
+                ? LandmarkNodeSelector.SelectLandmarkNode(_lastGraph, _landmarkMinHopsFromEntry)
+                : null;
+
             foreach (RoomNode node in _lastGraph.Nodes)
             {
-                if (node.Definition == null || node.Definition.RoomPrefab == null)
+                bool isLandmark = landmarkNodeId.HasValue && node.Id == landmarkNodeId.Value;
+                GameObject roomPrefab = isLandmark ? _landmarkRoomPrefab : node.Definition?.RoomPrefab;
+
+                if (roomPrefab == null)
                 {
                     Debug.LogError($"[ProceduralLevelBuilder] Room node at {node.GridPosition} has no RoomPrefab assigned on its RoomDefinition.", this);
                     continue;
                 }
 
                 Vector3 worldPosition = new(node.GridPosition.x * _cellSize, 0f, node.GridPosition.y * _cellSize);
-                GameObject instanceGo = Instantiate(node.Definition.RoomPrefab, worldPosition, Quaternion.identity, transform);
-                instanceGo.name = $"{node.Definition.Category}_{node.GridPosition.x}_{node.GridPosition.y}";
+                GameObject instanceGo = Instantiate(roomPrefab, worldPosition, Quaternion.identity, transform);
+                instanceGo.name = isLandmark ? $"Landmark_{node.GridPosition.x}_{node.GridPosition.y}" : $"{node.Definition.Category}_{node.GridPosition.x}_{node.GridPosition.y}";
 
                 var roomInstance = instanceGo.GetComponent<RoomInstance>();
                 if (roomInstance == null)

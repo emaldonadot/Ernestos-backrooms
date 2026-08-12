@@ -17,6 +17,8 @@ namespace EndlessRooms.Procedural
         MonsterEncounter,
         Exit,
         Transitional,
-        RareAnomaly
+        RareAnomaly,
+        Storage,
+        OfficeCluster
     }
 }
