@@ -141,42 +141,49 @@ namespace EndlessRooms.EditorSetup
                 ceilingLight.localPosition = pos;
             }
 
-            // Mezzanine height is constrained by the room's small 6x6 footprint, not
-            // "half the Atrium's height": the ramp has to finish climbing *before* it
-            // reaches the mezzanine's footprint, or its rising slope clips straight
-            // through the mezzanine's underside instead of meeting it edge-to-edge.
-            // With the mezzanine occupying the north ~2.8m of the room (below), that
-            // leaves only the south ~3.1m of floor for the entire climb — at the
-            // 45-degree slope limit (no jump in this game, and discrete steps taller
-            // than the ~0.3m default step offset are simply impassable), that caps the
-            // achievable height at just over 3m. 2.2m keeps a comfortable margin.
-            const float mezzanineHeight = 2.2f;
-            const float mezzanineNearEdgeZ = 0.1f;
+            // The previous two attempts tried to make the ramp's incline finish exactly
+            // at the mezzanine's edge (sharing the Z axis) — fragile, because any small
+            // gap or overlap there either strands the player mid-air or drives the ramp
+            // into the mezzanine's underside. This version separates them by X instead:
+            // the ramp climbs entirely to the west, outside the mezzanine's X range, so
+            // its height never has to line up with the mezzanine's edge at all — only a
+            // short flat bridge at the top needs to meet the mezzanine, and two flat,
+            // same-height slabs meeting is trivial to get right. Margins from every
+            // wall are deliberately generous (the CharacterController's 0.35m radius
+            // needs real clearance to approach anything, not just geometric contact),
+            // and mezzanineHeight leaves enough room for a standing player (1.8m) to
+            // walk underneath it without clipping, since it can't avoid overlapping
+            // whichever wall(s) end up with doors for a given seed.
+            const float mezzanineHeight = 2.6f;
 
-            AddCeilingLight(contents.transform, "MezzanineLight", new Vector3(0f, mezzanineHeight + 0.3f, 1.5f));
+            AddCeilingLight(contents.transform, "MezzanineLight", new Vector3(0f, mezzanineHeight + 0.3f, 2f));
 
             AddUpperWall(contents.transform, "UpperWall_North", new Vector3(0f, (WallHeight + AtriumHeight) / 2f, 3f), new Vector3(6f, AtriumHeight - WallHeight, 0.2f));
             AddUpperWall(contents.transform, "UpperWall_South", new Vector3(0f, (WallHeight + AtriumHeight) / 2f, -3f), new Vector3(6f, AtriumHeight - WallHeight, 0.2f));
             AddUpperWall(contents.transform, "UpperWall_East", new Vector3(3f, (WallHeight + AtriumHeight) / 2f, 0f), new Vector3(0.2f, AtriumHeight - WallHeight, 6f));
             AddUpperWall(contents.transform, "UpperWall_West", new Vector3(-3f, (WallHeight + AtriumHeight) / 2f, 0f), new Vector3(0.2f, AtriumHeight - WallHeight, 6f));
 
-            // Mezzanine walkway along the north side — its near (south) edge is at
-            // mezzanineNearEdgeZ, matched exactly by the ramp's end point below so the
-            // two meet flush instead of overlapping.
-            AddUpperWall(contents.transform, "Mezzanine_Floor", new Vector3(0f, mezzanineHeight, 1.5f), new Vector3(6f, 0.2f, 2.8f));
-            AddUpperWall(contents.transform, "Mezzanine_Railing", new Vector3(0f, mezzanineHeight + 0.5f, 0.15f), new Vector3(6f, 0.9f, 0.1f));
+            // Mezzanine walkway: x=-1.5..1.5, z=1.3..2.7 — kept at least 1.3m clear of
+            // every wall, so it can never block a doorway regardless of which wall(s)
+            // the procedural graph puts a door on for a given seed.
+            AddUpperWall(contents.transform, "Mezzanine_Floor", new Vector3(0f, mezzanineHeight, 2f), new Vector3(3f, 0.2f, 1.4f));
+            AddUpperWall(contents.transform, "Mezzanine_Railing", new Vector3(0f, mezzanineHeight + 0.5f, 1.35f), new Vector3(3f, 0.9f, 0.1f));
 
-            // A "broken escalator" as a single continuous ramp along the west wall —
-            // rough/disused in flavor (no handrail, bare incline). It finishes climbing
-            // to mezzanineHeight exactly at mezzanineNearEdgeZ, so there's no stretch
-            // where the rising ramp surface and the flat mezzanine underside overlap in
-            // the same space (which is what caused the "hit the floor going up" bug —
-            // the ramp previously kept climbing 1.7m past the mezzanine's near edge
-            // while still underneath its footprint, so the rising slope ran straight
-            // into the mezzanine floor above it).
-            Vector3 rampStart = new(-2f, 0f, -2.9f);
-            Vector3 rampEnd = new(-2f, mezzanineHeight, mezzanineNearEdgeZ);
-            AddRamp(contents.transform, "Escalator_Ramp", rampStart, rampEnd, width: 1.8f, thickness: 0.3f);
+            // A "broken escalator" as a single continuous ramp — rough/disused in
+            // flavor (no handrail, bare incline) — climbing along the west side, well
+            // outside the mezzanine's x=-1.5..1.5 footprint so its rising slope never
+            // shares space with the mezzanine's underside at any point. 0.5m clear of
+            // the south wall's inner face (~z=-2.9) at the base specifically addresses
+            // the "can't approach the ramp" report — the player's collision radius
+            // needs room to stand in front of it, not just geometric adjacency.
+            Vector3 rampStart = new(-2.3f, 0f, -2.4f);
+            Vector3 rampEnd = new(-2.3f, mezzanineHeight, 1f);
+            AddRamp(contents.transform, "Escalator_Ramp", rampStart, rampEnd, width: 1f, thickness: 0.3f);
+
+            // Flat bridge from the ramp's landing to the mezzanine's actual footprint —
+            // both flat and at the same height, so they overlap cleanly with no
+            // tilted-surface alignment to get wrong (unlike the incline itself).
+            AddUpperWall(contents.transform, "Escalator_Landing", new Vector3(-1.7f, mezzanineHeight, 1.5f), new Vector3(1.8f, 0.2f, 1f));
 
             PrefabUtility.SaveAsPrefabAsset(contents, AtriumRoomPrefabPath);
             Object.DestroyImmediate(contents);
