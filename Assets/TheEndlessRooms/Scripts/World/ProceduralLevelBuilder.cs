@@ -39,6 +39,7 @@ namespace EndlessRooms.World
 
         public RoomGraph LastGraph => _lastGraph;
         public int Seed => _seed;
+        public float CellSize => _cellSize;
 
         /// <summary>The door on the connection leading to the exit room, always set once <see cref="BuildLevel"/> completes — <see cref="RoomGraphValidator"/> guarantees the exit is reachable, so a connection touching it always exists.</summary>
         public Door ExitDoor { get; private set; }

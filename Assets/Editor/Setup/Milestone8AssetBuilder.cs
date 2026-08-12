@@ -232,7 +232,15 @@ namespace EndlessRooms.EditorSetup
             var attendantConfig = Milestone7AssetBuilder.LoadOrCreateAttendantConfig();
             Milestone7AssetBuilder.BuildAttendant(levelGo, attendantConfig, playerGo.transform);
 
-            BuildSecretRoom(playerGo.transform.position);
+            var secretRoomRoot = new GameObject("SecretRoomRoot").transform;
+            BuildSecretRoom(playerGo.transform.position, secretRoomRoot);
+
+            var placerGo = new GameObject("SecretRoomPlacer");
+            var placer = placerGo.AddComponent<SecretRoomPlacer>();
+            var placerSo = new SerializedObject(placer);
+            placerSo.FindProperty("_levelBuilder").objectReferenceValue = levelGo.GetComponent<ProceduralLevelBuilder>();
+            placerSo.FindProperty("_secretRoomRoot").objectReferenceValue = secretRoomRoot;
+            placerSo.ApplyModifiedPropertiesWithoutUndo();
             BuildInteractionPromptUi(interactionCaster);
             BuildFieldNoteUi(actionRefs.Interact);
 
@@ -365,15 +373,17 @@ namespace EndlessRooms.EditorSetup
         /// only its visual (a Bookcase_Disguise mesh instead of a plain panel) and its
         /// prompt text (via the new SetCustomPrompts) are different.
         /// </summary>
-        private static void BuildSecretRoom(Vector3 playerSpawnPosition)
+        private static void BuildSecretRoom(Vector3 playerSpawnPosition, Transform secretRoomRoot)
         {
             const float cellSize = 6f;
             Vector3 roomCenter = playerSpawnPosition + new Vector3(0f, -1f, -cellSize);
+            secretRoomRoot.position = roomCenter;
 
             var roomPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RoomPrefabPath);
             var secretRoomGo = (GameObject)PrefabUtility.InstantiatePrefab(roomPrefab);
             secretRoomGo.name = "MaintenanceSubOffice";
             secretRoomGo.transform.position = roomCenter;
+            secretRoomGo.transform.SetParent(secretRoomRoot, worldPositionStays: true);
 
             var roomInstance = secretRoomGo.GetComponent<RoomInstance>();
             roomInstance.OpenWall(Direction.North);
@@ -383,25 +393,26 @@ namespace EndlessRooms.EditorSetup
             // texture once one exists) — painting them yellow here would override it.
 
             Vector3 doorBoundary = roomCenter + new Vector3(0f, 0f, cellSize / 2f);
-            BuildDisguisedDoor(doorBoundary);
+            BuildDisguisedDoor(doorBoundary, secretRoomRoot);
 
             Vector3 deskPos = roomCenter + new Vector3(-1.5f, 0f, -1.3f);
-            InstantiateProp("Desk_Office.fbx", deskPos, Quaternion.identity);
-            InstantiateProp("FilingCabinet.fbx", roomCenter + new Vector3(1.8f, 0f, -1.8f), Quaternion.Euler(0f, 180f, 0f));
-            GameObject binder = InstantiateProp("Binder_PersonnelLogs.fbx", deskPos + new Vector3(0.3f, 0.75f, 0f), Quaternion.Euler(0f, 20f, 0f));
+            InstantiateProp("Desk_Office.fbx", deskPos, Quaternion.identity, secretRoomRoot);
+            InstantiateProp("FilingCabinet.fbx", roomCenter + new Vector3(1.8f, 0f, -1.8f), Quaternion.Euler(0f, 180f, 0f), secretRoomRoot);
+            GameObject binder = InstantiateProp("Binder_PersonnelLogs.fbx", deskPos + new Vector3(0.3f, 0.75f, 0f), Quaternion.Euler(0f, 20f, 0f), secretRoomRoot);
             _ = binder;
 
-            BuildFieldNote("WorkOrderNote", deskPos + new Vector3(-0.35f, 0.78f, 0f), WorkOrderText, "Read Work Order");
-            BuildFieldNote("PersonnelLogNote", roomCenter + new Vector3(1.8f, 1.35f, -1.8f), PersonnelLogText, "Read Personnel Log");
+            BuildFieldNote("WorkOrderNote", deskPos + new Vector3(-0.35f, 0.78f, 0f), WorkOrderText, "Read Work Order", secretRoomRoot);
+            BuildFieldNote("PersonnelLogNote", roomCenter + new Vector3(1.8f, 1.35f, -1.8f), PersonnelLogText, "Read Personnel Log", secretRoomRoot);
         }
 
-        private static void BuildDisguisedDoor(Vector3 boundaryPoint)
+        private static void BuildDisguisedDoor(Vector3 boundaryPoint, Transform parent)
         {
             Vector3 hingePosition = boundaryPoint;
             hingePosition.x -= DoorWidth / 2f;
 
             var hinge = new GameObject("SecretDoorHinge");
             hinge.transform.position = hingePosition;
+            hinge.transform.SetParent(parent, worldPositionStays: true);
 
             var bookcasePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{ModelsFolder}/Bookcase_Disguise.fbx");
             var bookcaseInstance = (GameObject)PrefabUtility.InstantiatePrefab(bookcasePrefab, hinge.transform);
@@ -430,7 +441,7 @@ namespace EndlessRooms.EditorSetup
             }
         }
 
-        private static GameObject InstantiateProp(string fbxFileName, Vector3 position, Quaternion rotation)
+        private static GameObject InstantiateProp(string fbxFileName, Vector3 position, Quaternion rotation, Transform parent)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{ModelsFolder}/{fbxFileName}");
             if (prefab == null)
@@ -442,6 +453,7 @@ namespace EndlessRooms.EditorSetup
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             instance.transform.position = position;
             instance.transform.rotation = rotation;
+            instance.transform.SetParent(parent, worldPositionStays: true);
 
             var meshFilter = instance.GetComponentInChildren<MeshFilter>();
             if (meshFilter != null && instance.GetComponent<Collider>() == null)
@@ -455,12 +467,13 @@ namespace EndlessRooms.EditorSetup
             return instance;
         }
 
-        private static void BuildFieldNote(string name, Vector3 position, string fragmentText, string promptLabel)
+        private static void BuildFieldNote(string name, Vector3 position, string fragmentText, string promptLabel, Transform parent)
         {
             var noteGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             noteGo.name = name;
             noteGo.transform.position = position;
             noteGo.transform.localScale = new Vector3(0.22f, 0.03f, 0.28f);
+            noteGo.transform.SetParent(parent, worldPositionStays: true);
             DebugColor.Apply(noteGo, DebugColor.Note);
 
             var note = noteGo.AddComponent<FieldNote>();
