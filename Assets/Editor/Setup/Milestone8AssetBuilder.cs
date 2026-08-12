@@ -284,7 +284,7 @@ namespace EndlessRooms.EditorSetup
             };
         }
 
-        private static GameObject BuildLevelBuilder()
+        internal static GameObject BuildLevelBuilder()
         {
             var entry = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/Standard.asset");
             var exit = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"{DefinitionsFolder}/Exit.asset");
@@ -381,7 +381,7 @@ namespace EndlessRooms.EditorSetup
         /// only its visual (a Bookcase_Disguise mesh instead of a plain panel) and its
         /// prompt text (via the new SetCustomPrompts) are different.
         /// </summary>
-        private static void BuildSecretRoom(Vector3 playerSpawnPosition, Transform secretRoomRoot)
+        internal static void BuildSecretRoom(Vector3 playerSpawnPosition, Transform secretRoomRoot)
         {
             const float cellSize = 6f;
             Vector3 roomCenter = playerSpawnPosition + new Vector3(0f, -1f, -cellSize);
