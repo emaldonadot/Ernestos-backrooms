@@ -88,6 +88,29 @@ namespace EndlessRooms.World
             LevelBuilt?.Invoke(_lastGraph);
         }
 
+        /// <summary>
+        /// Milestone 9: adopts an already-built graph instead of running
+        /// <see cref="RoomGraphGenerator"/> — for a hand-authored fixed level (e.g.
+        /// Level 1's office building) whose rooms already exist, built by a different
+        /// Editor script, not <see cref="InstantiateRooms"/>. This is the seam that lets
+        /// <see cref="AttendantController"/>'s graph-based patrol/pathing work completely
+        /// unchanged against a fixed layout: it only ever reads <see cref="LastGraph"/>
+        /// and calls <see cref="TryGetRoomWorldPosition"/>, neither of which cares
+        /// whether the graph came from generation or was constructed by hand, as long as
+        /// each <see cref="RoomNode.GridPosition"/> maps to the room's real world
+        /// position via <c>GridPosition * _cellSize</c> — callers should pick a _cellSize
+        /// (e.g. a small common unit like 0.5) that evenly divides their hand-placed
+        /// positions. Skips <see cref="ClearInstantiatedChildren"/>/<see cref="InstantiateRooms"/>/
+        /// <see cref="OpenConnectionsAndPlaceDoors"/> entirely — the caller already built
+        /// (and is responsible for) the actual scene geometry.
+        /// </summary>
+        public void UseExternalGraph(RoomGraph graph)
+        {
+            _lastGraph = graph;
+            _lastGraphValid = RoomGraphValidator.Validate(graph).IsValid;
+            LevelBuilt?.Invoke(_lastGraph);
+        }
+
         /// <summary>World-space position of the entry room, for spawning the player there.</summary>
         public Vector3 GetEntryWorldPosition()
         {
