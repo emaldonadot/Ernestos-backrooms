@@ -575,5 +575,43 @@ namespace EndlessRooms.EditorSetup
             scenes.Add(new EditorBuildSettingsScene(path, true));
             EditorBuildSettings.scenes = scenes.ToArray();
         }
+
+        /// <summary>
+        /// Standalone Linux desktop build of this scene, for playing outside the Editor
+        /// — same idea as <see cref="Milestone8VRAssetBuilder.BuildApk"/>'s one-off APK,
+        /// just targeting this machine's own platform instead of Android. Doesn't touch
+        /// the active build target permanently; -buildTarget on the command line handles
+        /// that for the one headless invocation.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Build M8 PC Standalone")]
+        public static void BuildPcStandalone()
+        {
+            const string outputPath = "Builds/TheEndlessRooms_M8_PC/TheEndlessRooms.x86_64";
+            string outputDir = System.IO.Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(outputDir) && !System.IO.Directory.Exists(outputDir))
+            {
+                System.IO.Directory.CreateDirectory(outputDir);
+            }
+
+            var buildPlayerOptions = new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = outputPath,
+                target = BuildTarget.StandaloneLinux64,
+                options = BuildOptions.None,
+            };
+
+            UnityEditor.Build.Reporting.BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            UnityEditor.Build.Reporting.BuildSummary summary = report.summary;
+
+            if (summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            {
+                Debug.Log($"[Milestone8AssetBuilder] Build succeeded: '{summary.outputPath}' ({summary.totalSize} bytes).");
+            }
+            else
+            {
+                Debug.LogError($"[Milestone8AssetBuilder] Build {summary.result}: {summary.totalErrors} error(s). See the full log above for details.");
+            }
+        }
     }
 }
