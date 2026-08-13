@@ -1,67 +1,39 @@
+using System.Linq;
+using EndlessRooms.AI;
+using EndlessRooms.Core;
+using EndlessRooms.Player;
+using EndlessRooms.UI;
 using EndlessRooms.World;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using Side = EndlessRooms.World.Level1Layout.Side;
+using OfficeSpec = EndlessRooms.World.Level1Layout.OfficeSpec;
 
 namespace EndlessRooms.EditorSetup
 {
     /// <summary>
     /// Headless builder for Milestone 9's Level 1: a fixed, hand-authored cross-spine
-    /// office building (not procedural — see docs/features/milestone-9-playable-office-levels.md).
-    /// 14 offices at 5m(deep) x 6m(wide) x 3m(tall), a 6m-wide corridor, 2 paired
-    /// bathrooms, 2 open-air courtyards. This pass builds the room/corridor shell,
-    /// doors, and placeholder furniture collision only — content (clues/keys/locks/
-    /// Attendant/jump scares) and the win/lose game flow are separate follow-up passes.
+    /// office building (not procedural — see docs/features/milestone-9-playable-office-levels.md
+    /// and <see cref="Level1Layout"/> for the shared position math). 14 offices at
+    /// 5m(deep) x 6m(wide) x 3m(tall), a 6m-wide corridor, 2 paired bathrooms, 2 open-air
+    /// courtyards, a PC player, the Attendant (unchanged from Milestone 7, pathing via
+    /// <see cref="Level1RoomGraphProvider"/>'s synthetic graph), the exit, and a first
+    /// investigate-clue-key-locked door chain proving the mechanic end to end (more
+    /// content is a follow-up, not a blocker for the first playable pass).
     /// </summary>
     public static class Milestone9Level1AssetBuilder
     {
-        private const float RoomDepthX = 5f;
-        private const float RoomWidthZ = 6f;
         private const float WallHeight = 3f;
         private const float WallThickness = 0.2f;
         private const float DoorWidth = 2f;
-        private const float CorridorWidth = 6f;
-        private const float RowSpacing = 6f;
 
         private const string ScenePath = "Assets/TheEndlessRooms/Scenes/Milestone9_Level1TestScene.unity";
-
-        private enum Side
-        {
-            West,
-            East,
-        }
-
-        private struct OfficeSpec
-        {
-            public string Id;
-            public int Row;
-            public Side Side;
-            public bool UseMeetingTable;
-            public bool HasShelf;
-            public bool IsCrossArm;
-        }
-
-        private static readonly OfficeSpec[] Offices =
-        {
-            new() { Id = "R01", Row = 1, Side = Side.West, HasShelf = false },
-            new() { Id = "R02", Row = 1, Side = Side.East, HasShelf = true },
-            new() { Id = "R03", Row = 2, Side = Side.West, HasShelf = true },
-            new() { Id = "R04", Row = 2, Side = Side.East, UseMeetingTable = true, HasShelf = true },
-            new() { Id = "R05", Row = 3, Side = Side.West, HasShelf = true },
-            new() { Id = "R06", Row = 3, Side = Side.East, HasShelf = true },
-            new() { Id = "R07", Row = 5, Side = Side.West, HasShelf = false },
-            new() { Id = "R08", Row = 5, Side = Side.East, UseMeetingTable = true, HasShelf = true },
-            new() { Id = "R09", Row = 7, Side = Side.West, HasShelf = true },
-            new() { Id = "R10", Row = 7, Side = Side.East, HasShelf = true },
-            new() { Id = "R11", Row = 9, Side = Side.West, HasShelf = true },
-            new() { Id = "R12", Row = 9, Side = Side.East, HasShelf = true },
-            new() { Id = "R13", Row = 6, Side = Side.West, HasShelf = false, IsCrossArm = true },
-            new() { Id = "R14", Row = 6, Side = Side.East, UseMeetingTable = true, HasShelf = false, IsCrossArm = true },
-        };
-
-        private const int CourtyardRow = 4;
-        private const int BathroomRow = 8;
-        private const int TotalRows = 9;
+        private const string InputActionsPath = "Assets/TheEndlessRooms/Settings/TheEndlessRooms.inputactions";
+        private const string MovementConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/PlayerMovementConfig.asset";
+        private const string ItemsFolder = "Assets/TheEndlessRooms/ScriptableObjects/Items";
 
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
@@ -74,52 +46,44 @@ namespace EndlessRooms.EditorSetup
                 Object.DestroyImmediate(defaultCamera);
             }
 
+            new GameObject("GameBootstrap").AddComponent<Core.GameBootstrap>();
+
             var levelRoot = new GameObject("Level1_HorrorOffice").transform;
 
             BuildMainCorridor(levelRoot);
             BuildCrossCorridorArms(levelRoot);
 
-            foreach (OfficeSpec office in Offices)
+            foreach (OfficeSpec office in Level1Layout.Offices)
             {
                 BuildOffice(levelRoot, office);
             }
 
-            BuildCourtyard(levelRoot, CourtyardRow, Side.West);
-            BuildCourtyard(levelRoot, CourtyardRow, Side.East);
-            BuildBathroom(levelRoot, BathroomRow, Side.West, "Bathroom_Women");
-            BuildBathroom(levelRoot, BathroomRow, Side.East, "Bathroom_Men");
+            BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.West);
+            BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.East);
+            BuildBathroom(levelRoot, Level1Layout.BathroomRow, Side.West, "Bathroom_Women");
+            BuildBathroom(levelRoot, Level1Layout.BathroomRow, Side.East, "Bathroom_Men");
+
+            GameObject levelGraphGo = BuildLevelGraph();
+
+            ActionRefs actionRefs = LoadInputActionReferences();
+            var movementConfig = AssetDatabase.LoadAssetAtPath<PlayerMovementConfig>(MovementConfigPath);
+            GameObject playerGo = BuildPlayer(movementConfig, actionRefs, out InteractionCaster interactionCaster);
+            playerGo.transform.position = new Vector3(0f, 1f, 1.5f);
+
+            var attendantConfig = Milestone7AssetBuilder.LoadOrCreateAttendantConfig();
+            Milestone7AssetBuilder.BuildAttendant(levelGraphGo, attendantConfig, playerGo.transform);
+
+            BuildExitPoint();
+            BuildFirstKeyLockChain(playerGo.transform);
+            BuildJumpScares();
+
+            BuildInteractionPromptUi(interactionCaster);
+            BuildLevelCompleteUi();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
 
-            Debug.Log($"[Milestone9Level1AssetBuilder] Built and saved '{ScenePath}' — {Offices.Length} offices, 2 bathrooms, 2 courtyards.");
-        }
-
-        private static float RowCenterZ(int row) => row * RowSpacing - RowSpacing / 2f;
-
-        /// <summary>Converts a room-local offset (local +X always points toward the door/corridor, regardless of which side the room is on) to world space.</summary>
-        private static Vector3 LocalToWorld(Vector3 roomCenter, Side side, Vector3 local)
-        {
-            float xSign = side == Side.West ? 1f : -1f;
-            return roomCenter + new Vector3(local.x * xSign, local.y, local.z);
-        }
-
-        private static Vector3 RoomCenter(int row, Side side)
-        {
-            float z = RowCenterZ(row);
-            float x = (CorridorWidth / 2f + RoomDepthX / 2f) * (side == Side.West ? -1f : 1f);
-            return new Vector3(x, 0f, z);
-        }
-
-        private static Vector3 CrossArmRoomCenter(Side side)
-        {
-            // One corridor-width further out than a normal room slot, since R13/R14 sit
-            // at the far ends of the cross corridor's own east/west extension rather than
-            // directly off the main north-south corridor.
-            float z = RowCenterZ(6);
-            float armInnerEdge = CorridorWidth / 2f + CorridorWidth; // main corridor edge + one cross-arm cell
-            float x = (armInnerEdge + RoomDepthX / 2f) * (side == Side.West ? -1f : 1f);
-            return new Vector3(x, 0f, z);
+            Debug.Log($"[Milestone9Level1AssetBuilder] Built and saved '{ScenePath}' — {Level1Layout.Offices.Length} offices, 2 bathrooms, 2 courtyards, player, Attendant, exit, one key/lock chain, jump scares.");
         }
 
         // ---------------------------------------------------------------- corridor shell
@@ -129,17 +93,14 @@ namespace EndlessRooms.EditorSetup
             var corridorGo = new GameObject("MainCorridor");
             corridorGo.transform.SetParent(parent, false);
 
-            float totalLength = TotalRows * RowSpacing;
+            float totalLength = Level1Layout.TotalRows * Level1Layout.RowSpacing;
             float centerZ = totalLength / 2f;
 
-            CreateBlock(corridorGo.transform, "Floor", new Vector3(0f, 0f, centerZ), new Vector3(CorridorWidth, WallThickness, totalLength));
-            CreateBlock(corridorGo.transform, "Ceiling", new Vector3(0f, WallHeight, centerZ), new Vector3(CorridorWidth, WallThickness, totalLength));
+            CreateBlock(corridorGo.transform, "Floor", new Vector3(0f, 0f, centerZ), new Vector3(Level1Layout.CorridorWidth, WallThickness, totalLength));
+            CreateBlock(corridorGo.transform, "Ceiling", new Vector3(0f, WallHeight, centerZ), new Vector3(Level1Layout.CorridorWidth, WallThickness, totalLength));
 
-            // End caps: solid wall at the very south (before START) and a doorway-height
-            // opening marker at the north (EXIT) — the actual ExitPoint trigger is added
-            // in the content-wiring pass, this just closes off the shell.
-            CreateBlock(corridorGo.transform, "Wall_SouthEnd", new Vector3(0f, WallHeight / 2f, -WallThickness / 2f), new Vector3(CorridorWidth, WallHeight, WallThickness));
-            CreateBlock(corridorGo.transform, "Wall_NorthEnd", new Vector3(0f, WallHeight / 2f, totalLength + WallThickness / 2f), new Vector3(CorridorWidth, WallHeight, WallThickness));
+            CreateBlock(corridorGo.transform, "Wall_SouthEnd", new Vector3(0f, WallHeight / 2f, -WallThickness / 2f), new Vector3(Level1Layout.CorridorWidth, WallHeight, WallThickness));
+            CreateBlock(corridorGo.transform, "Wall_NorthEnd", new Vector3(0f, WallHeight / 2f, totalLength + WallThickness / 2f), new Vector3(Level1Layout.CorridorWidth, WallHeight, WallThickness));
         }
 
         private static void BuildCrossCorridorArms(Transform parent)
@@ -147,23 +108,20 @@ namespace EndlessRooms.EditorSetup
             var crossGo = new GameObject("CrossCorridorArms");
             crossGo.transform.SetParent(parent, false);
 
-            float z = RowCenterZ(6);
-            float mainEdge = CorridorWidth / 2f;
-            float armLength = CorridorWidth;
+            float z = Level1Layout.RowCenterZ(Level1Layout.CrossCorridorRow);
+            float mainEdge = Level1Layout.CorridorWidth / 2f;
+            float armLength = Level1Layout.CorridorWidth;
 
             foreach (Side side in new[] { Side.West, Side.East })
             {
                 float sign = side == Side.West ? -1f : 1f;
                 float armCenterX = (mainEdge + armLength / 2f) * sign;
 
-                CreateBlock(crossGo.transform, $"Floor_{side}", new Vector3(armCenterX, 0f, z), new Vector3(armLength, WallThickness, CorridorWidth));
-                CreateBlock(crossGo.transform, $"Ceiling_{side}", new Vector3(armCenterX, WallHeight, z), new Vector3(armLength, WallThickness, CorridorWidth));
+                CreateBlock(crossGo.transform, $"Floor_{side}", new Vector3(armCenterX, 0f, z), new Vector3(armLength, WallThickness, Level1Layout.CorridorWidth));
+                CreateBlock(crossGo.transform, $"Ceiling_{side}", new Vector3(armCenterX, WallHeight, z), new Vector3(armLength, WallThickness, Level1Layout.CorridorWidth));
 
-                // North/south edges of the arm need solid walls (nothing opens off them) —
-                // the arm is only walkable along its own east-west axis, connecting the
-                // main corridor to R13/R14.
-                CreateBlock(crossGo.transform, $"Wall_{side}_North", new Vector3(armCenterX, WallHeight / 2f, z + CorridorWidth / 2f), new Vector3(armLength, WallHeight, WallThickness));
-                CreateBlock(crossGo.transform, $"Wall_{side}_South", new Vector3(armCenterX, WallHeight / 2f, z - CorridorWidth / 2f), new Vector3(armLength, WallHeight, WallThickness));
+                CreateBlock(crossGo.transform, $"Wall_{side}_North", new Vector3(armCenterX, WallHeight / 2f, z + Level1Layout.CorridorWidth / 2f), new Vector3(armLength, WallHeight, WallThickness));
+                CreateBlock(crossGo.transform, $"Wall_{side}_South", new Vector3(armCenterX, WallHeight / 2f, z - Level1Layout.CorridorWidth / 2f), new Vector3(armLength, WallHeight, WallThickness));
             }
         }
 
@@ -171,14 +129,21 @@ namespace EndlessRooms.EditorSetup
 
         private static void BuildOffice(Transform parent, OfficeSpec spec)
         {
-            Vector3 center = spec.IsCrossArm ? CrossArmRoomCenter(spec.Side) : RoomCenter(spec.Row, spec.Side);
+            Vector3 center = spec.IsCrossArm ? Level1Layout.CrossArmRoomCenter(spec.Side) : Level1Layout.RoomCenter(spec.Row, spec.Side);
             var roomGo = new GameObject(spec.Id);
             roomGo.transform.SetParent(parent, false);
             roomGo.transform.position = center;
 
-            BuildRoomShellWithDoor(roomGo.transform, spec.Side, RoomDepthX, RoomWidthZ);
+            BuildRoomShellWithDoor(roomGo.transform, spec.Side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out Door door);
             BuildOfficeFurniture(roomGo.transform, spec);
+
+            if (spec.Id == "R11")
+            {
+                _pendingLockedDoor = door;
+            }
         }
+
+        private static Door _pendingLockedDoor;
 
         /// <summary>
         /// Floor, ceiling, back wall, two side walls, and a door-gap front wall (split
@@ -188,42 +153,38 @@ namespace EndlessRooms.EditorSetup
         /// All positions are room-local (center of the room = origin) before LocalToWorld
         /// mirrors them for East-side rooms.
         /// </summary>
-        private static void BuildRoomShellWithDoor(Transform room, Side side, float depthX, float widthZ)
+        private static void BuildRoomShellWithDoor(Transform room, Side side, float depthX, float widthZ, out Door door)
         {
             Vector3 roomCenter = room.position;
 
             CreateBlockWorld(room, "Floor", roomCenter, new Vector3(depthX, WallThickness, widthZ));
             CreateBlockWorld(room, "Ceiling", roomCenter + Vector3.up * WallHeight, new Vector3(depthX, WallThickness, widthZ));
 
-            // Back wall (opposite the door).
             Vector3 backWallLocal = new(-depthX / 2f, WallHeight / 2f, 0f);
-            CreateBlockWorld(room, "Wall_Back", LocalToWorld(roomCenter, side, backWallLocal), new Vector3(WallThickness, WallHeight, widthZ));
+            CreateBlockWorld(room, "Wall_Back", Level1Layout.LocalToWorld(roomCenter, side, backWallLocal), new Vector3(WallThickness, WallHeight, widthZ));
 
-            // Side walls (run the full depth of the room).
             Vector3 sideWallLocalNear = new(0f, WallHeight / 2f, widthZ / 2f);
             Vector3 sideWallLocalFar = new(0f, WallHeight / 2f, -widthZ / 2f);
-            CreateBlockWorld(room, "Wall_SideA", LocalToWorld(roomCenter, side, sideWallLocalNear), new Vector3(depthX, WallHeight, WallThickness));
-            CreateBlockWorld(room, "Wall_SideB", LocalToWorld(roomCenter, side, sideWallLocalFar), new Vector3(depthX, WallHeight, WallThickness));
+            CreateBlockWorld(room, "Wall_SideA", Level1Layout.LocalToWorld(roomCenter, side, sideWallLocalNear), new Vector3(depthX, WallHeight, WallThickness));
+            CreateBlockWorld(room, "Wall_SideB", Level1Layout.LocalToWorld(roomCenter, side, sideWallLocalFar), new Vector3(depthX, WallHeight, WallThickness));
 
-            // Door-gap front wall: two solid pieces flanking a DoorWidth gap, centered on
-            // the room's width.
             float sideWidth = (widthZ - DoorWidth) / 2f;
             float sideOffset = sideWidth / 2f + DoorWidth / 2f;
             Vector3 frontWallLocal = new(depthX / 2f, WallHeight / 2f, 0f);
-            CreateBlockWorld(room, "Wall_Front_Left", LocalToWorld(roomCenter, side, frontWallLocal + new Vector3(0f, 0f, -sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
-            CreateBlockWorld(room, "Wall_Front_Right", LocalToWorld(roomCenter, side, frontWallLocal + new Vector3(0f, 0f, sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
+            CreateBlockWorld(room, "Wall_Front_Left", Level1Layout.LocalToWorld(roomCenter, side, frontWallLocal + new Vector3(0f, 0f, -sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
+            CreateBlockWorld(room, "Wall_Front_Right", Level1Layout.LocalToWorld(roomCenter, side, frontWallLocal + new Vector3(0f, 0f, sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
 
-            Vector3 doorBoundaryWorld = LocalToWorld(roomCenter, side, new Vector3(depthX / 2f, 0f, 0f));
-            PlaceDoor(room, doorBoundaryWorld, $"{room.name}_Door");
+            Vector3 doorBoundaryWorld = Level1Layout.LocalToWorld(roomCenter, side, new Vector3(depthX / 2f, 0f, 0f));
+            door = PlaceDoor(room, doorBoundaryWorld, $"{room.name}_Door");
         }
 
         /// <summary>
-        /// Same hinge+panel construction as <see cref="EndlessRooms.World.ProceduralLevelBuilder.PlaceDoor"/>'s
+        /// Same hinge+panel construction as <see cref="ProceduralLevelBuilder.PlaceDoor"/>'s
         /// East/West case (the connecting wall runs along Z here, same as it does between
         /// rooms placed side-by-side along a procedural corridor) — reused by hand since
         /// this level isn't built by that system.
         /// </summary>
-        private static void PlaceDoor(Transform parent, Vector3 boundaryWorldPos, string doorName)
+        private static Door PlaceDoor(Transform parent, Vector3 boundaryWorldPos, string doorName)
         {
             Vector3 hingePosition = boundaryWorldPos;
             hingePosition.z -= DoorWidth / 2f;
@@ -244,6 +205,7 @@ namespace EndlessRooms.EditorSetup
             // No explicit SaveId: hinge.name (doorName, e.g. "R01_Door") is already
             // unique per door, so the default name-based SaveId works as-is — same
             // reasoning as the secret room's door in Milestone8AssetBuilder.
+            return door;
         }
 
         private static void BuildOfficeFurniture(Transform room, OfficeSpec spec)
@@ -252,18 +214,18 @@ namespace EndlessRooms.EditorSetup
 
             if (spec.UseMeetingTable)
             {
-                AddFurniture(room, "MeetingTable", LocalToWorld(roomCenter, spec.Side, new Vector3(-1.5f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 2.2f), hideable: false);
+                AddFurniture(room, "MeetingTable", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.5f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 2.2f), hideable: false);
             }
             else
             {
-                AddFurniture(room, "Desk", LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 1.4f), hideable: true);
+                AddFurniture(room, "Desk", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 1.4f), hideable: true);
             }
 
-            AddFurniture(room, "Closet", LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 1.0f, -2.3f)), new Vector3(0.6f, 2.0f, 0.9f), hideable: true);
+            AddFurniture(room, "Closet", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 1.0f, -2.3f)), new Vector3(0.6f, 2.0f, 0.9f), hideable: true);
 
             if (spec.HasShelf)
             {
-                AddFurniture(room, "Shelf", LocalToWorld(roomCenter, spec.Side, new Vector3(-2.15f, 0.65f, 2.3f)), new Vector3(0.4f, 1.3f, 1.2f), hideable: false);
+                AddFurniture(room, "Shelf", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-2.15f, 0.65f, 2.3f)), new Vector3(0.4f, 1.3f, 1.2f), hideable: false);
             }
         }
 
@@ -271,37 +233,324 @@ namespace EndlessRooms.EditorSetup
 
         private static void BuildBathroom(Transform parent, int row, Side side, string name)
         {
-            Vector3 center = RoomCenter(row, side);
+            Vector3 center = Level1Layout.RoomCenter(row, side);
             var roomGo = new GameObject(name);
             roomGo.transform.SetParent(parent, false);
             roomGo.transform.position = center;
 
-            BuildRoomShellWithDoor(roomGo.transform, side, RoomDepthX, RoomWidthZ);
+            BuildRoomShellWithDoor(roomGo.transform, side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out _);
 
-            AddFurniture(roomGo.transform, "Toilet", LocalToWorld(center, side, new Vector3(-2.0f, 0.4f, -2.0f)), new Vector3(0.6f, 0.8f, 0.6f), hideable: false);
-            AddFurniture(roomGo.transform, "Sink", LocalToWorld(center, side, new Vector3(-2.0f, 0.45f, 2.0f)), new Vector3(0.6f, 0.9f, 0.6f), hideable: false);
+            AddFurniture(roomGo.transform, "Toilet", Level1Layout.LocalToWorld(center, side, new Vector3(-2.0f, 0.4f, -2.0f)), new Vector3(0.6f, 0.8f, 0.6f), hideable: false);
+            AddFurniture(roomGo.transform, "Sink", Level1Layout.LocalToWorld(center, side, new Vector3(-2.0f, 0.45f, 2.0f)), new Vector3(0.6f, 0.9f, 0.6f), hideable: false);
         }
 
         // ---------------------------------------------------------------- courtyards
 
         private static void BuildCourtyard(Transform parent, int row, Side side)
         {
-            Vector3 center = RoomCenter(row, side);
+            Vector3 center = Level1Layout.RoomCenter(row, side);
             var roomGo = new GameObject($"Courtyard_{side}");
             roomGo.transform.SetParent(parent, false);
             roomGo.transform.position = center;
 
-            // Open to sky: floor + walls, no ceiling, no door gap needed on the far side
-            // (the whole corridor-facing wall is open — the courtyard is basically an
-            // alcove off the corridor, not a separately-doored room).
-            CreateBlockWorld(roomGo.transform, "Floor", center, new Vector3(RoomDepthX, WallThickness, RoomWidthZ));
+            CreateBlockWorld(roomGo.transform, "Floor", center, new Vector3(Level1Layout.RoomDepthX, WallThickness, Level1Layout.RoomWidthZ));
 
-            Vector3 backWallLocal = new(-RoomDepthX / 2f, WallHeight / 2f, 0f);
-            CreateBlockWorld(roomGo.transform, "Wall_Back", LocalToWorld(center, side, backWallLocal), new Vector3(WallThickness, WallHeight, RoomWidthZ));
-            CreateBlockWorld(roomGo.transform, "Wall_SideA", LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, RoomWidthZ / 2f)), new Vector3(RoomDepthX, WallHeight, WallThickness));
-            CreateBlockWorld(roomGo.transform, "Wall_SideB", LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, -RoomWidthZ / 2f)), new Vector3(RoomDepthX, WallHeight, WallThickness));
+            Vector3 backWallLocal = new(-Level1Layout.RoomDepthX / 2f, WallHeight / 2f, 0f);
+            CreateBlockWorld(roomGo.transform, "Wall_Back", Level1Layout.LocalToWorld(center, side, backWallLocal), new Vector3(WallThickness, WallHeight, Level1Layout.RoomWidthZ));
+            CreateBlockWorld(roomGo.transform, "Wall_SideA", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
+            CreateBlockWorld(roomGo.transform, "Wall_SideB", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, -Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
 
-            AddFurniture(roomGo.transform, "PlanterPlaceholder", LocalToWorld(center, side, new Vector3(-1.8f, 0.3f, 0f)), new Vector3(0.8f, 0.6f, 0.8f), hideable: false);
+            AddFurniture(roomGo.transform, "PlanterPlaceholder", Level1Layout.LocalToWorld(center, side, new Vector3(-1.8f, 0.3f, 0f)), new Vector3(0.8f, 0.6f, 0.8f), hideable: false);
+        }
+
+        // ---------------------------------------------------------------- level graph / Attendant
+
+        private static GameObject BuildLevelGraph()
+        {
+            var levelGraphGo = new GameObject("Level1Graph");
+            var builder = levelGraphGo.AddComponent<ProceduralLevelBuilder>();
+            var so = new SerializedObject(builder);
+            so.FindProperty("_cellSize").floatValue = Level1Layout.GraphCellSize;
+            so.FindProperty("_buildOnStart").boolValue = false;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            var providerGo = new GameObject("Level1RoomGraphProvider");
+            var provider = providerGo.AddComponent<Level1RoomGraphProvider>();
+            var providerSo = new SerializedObject(provider);
+            providerSo.FindProperty("_levelBuilder").objectReferenceValue = builder;
+            providerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            return levelGraphGo;
+        }
+
+        // ---------------------------------------------------------------- player
+
+        private struct ActionRefs
+        {
+            public InputActionReference Move;
+            public InputActionReference Look;
+            public InputActionReference Sprint;
+            public InputActionReference Crouch;
+            public InputActionReference Interact;
+        }
+
+        private static ActionRefs LoadInputActionReferences()
+        {
+            var subAssets = AssetDatabase.LoadAllAssetsAtPath(InputActionsPath).OfType<InputActionReference>().ToList();
+
+            InputActionReference Find(string actionName)
+            {
+                var reference = subAssets.FirstOrDefault(r => r.action.name == actionName);
+                if (reference == null)
+                {
+                    Debug.LogError($"[Milestone9Level1AssetBuilder] Could not find action '{actionName}' in '{InputActionsPath}'.");
+                }
+
+                return reference;
+            }
+
+            return new ActionRefs
+            {
+                Move = Find("Move"),
+                Look = Find("Look"),
+                Sprint = Find("Sprint"),
+                Crouch = Find("Crouch"),
+                Interact = Find("Interact"),
+            };
+        }
+
+        private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, out InteractionCaster interactionCaster)
+        {
+            var playerGo = new GameObject("Player") { tag = "Player" };
+
+            var characterController = playerGo.AddComponent<CharacterController>();
+            characterController.height = config.StandingHeight;
+            characterController.radius = 0.35f;
+            characterController.center = new Vector3(0f, config.StandingHeight / 2f, 0f);
+
+            var cameraPivot = new GameObject("CameraPivot").transform;
+            cameraPivot.SetParent(playerGo.transform, false);
+            cameraPivot.localPosition = new Vector3(0f, 1.6f, 0f);
+
+            var cameraGo = new GameObject("PlayerCamera");
+            cameraGo.transform.SetParent(cameraPivot, false);
+            var camera = cameraGo.AddComponent<Camera>();
+            camera.tag = "MainCamera";
+            cameraGo.AddComponent<AudioListener>();
+
+            var playerController = playerGo.AddComponent<PlayerController>();
+            var controllerSo = new SerializedObject(playerController);
+            controllerSo.FindProperty("_config").objectReferenceValue = config;
+            controllerSo.FindProperty("_moveAction").objectReferenceValue = actionRefs.Move;
+            controllerSo.FindProperty("_lookAction").objectReferenceValue = actionRefs.Look;
+            controllerSo.FindProperty("_sprintAction").objectReferenceValue = actionRefs.Sprint;
+            controllerSo.FindProperty("_crouchAction").objectReferenceValue = actionRefs.Crouch;
+            controllerSo.FindProperty("_cameraPivot").objectReferenceValue = cameraPivot;
+            controllerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            interactionCaster = playerGo.AddComponent<InteractionCaster>();
+            var casterSo = new SerializedObject(interactionCaster);
+            casterSo.FindProperty("_viewCamera").objectReferenceValue = camera;
+            casterSo.FindProperty("_interactAction").objectReferenceValue = actionRefs.Interact;
+            casterSo.ApplyModifiedPropertiesWithoutUndo();
+
+            playerGo.AddComponent<Inventory>();
+
+            return playerGo;
+        }
+
+        // ---------------------------------------------------------------- exit
+
+        private static void BuildExitPoint()
+        {
+            float z = Level1Layout.RowCenterZ(Level1Layout.TotalRows) + Level1Layout.RowSpacing / 2f - 1f;
+            var exitGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            exitGo.name = "ExitPoint";
+            exitGo.transform.position = new Vector3(0f, 1f, z);
+            exitGo.transform.localScale = Vector3.one * 0.6f;
+            exitGo.AddComponent<ExitPoint>();
+        }
+
+        // ---------------------------------------------------------------- first key/lock chain
+
+        /// <summary>
+        /// Proves the investigate-clue-key-locked-door mechanic end to end: a clue in R01
+        /// mentions a master key, the key itself sits in R01, and R11's door (near the
+        /// exit) requires it. Only one chain for this first pass — more rooms getting
+        /// clues/keys/locks is straightforward follow-up content once this is confirmed
+        /// to work, not a blocker.
+        /// </summary>
+        private static void BuildFirstKeyLockChain(Transform player)
+        {
+            GameObject r01 = GameObject.Find("R01");
+            if (r01 == null)
+            {
+                Debug.LogError("[Milestone9Level1AssetBuilder] Could not find R01 to place the first key/clue in.");
+                return;
+            }
+
+            EnsureFolder(ItemsFolder);
+            string itemPath = $"{ItemsFolder}/MasterKey.asset";
+            var masterKey = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(itemPath);
+            if (masterKey == null)
+            {
+                masterKey = ScriptableObject.CreateInstance<InventoryItemDefinition>();
+                AssetDatabase.CreateAsset(masterKey, itemPath);
+            }
+
+            masterKey.ItemId = "master_key";
+            masterKey.DisplayName = "Master Key";
+            masterKey.Description = "A worn brass key. Someone kept it in their desk.";
+            EditorUtility.SetDirty(masterKey);
+            AssetDatabase.SaveAssets();
+
+            Vector3 keyPosition = r01.transform.position + new Vector3(-1.7f, 0.9f, 0f);
+            var keyGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            keyGo.name = "MasterKeyPickup";
+            keyGo.transform.position = keyPosition;
+            keyGo.transform.localScale = new Vector3(0.08f, 0.02f, 0.15f);
+            DebugColor.Apply(keyGo, DebugColor.Pickup);
+            var pickup = keyGo.AddComponent<InventoryPickup>();
+            var pickupSo = new SerializedObject(pickup);
+            pickupSo.FindProperty("_item").objectReferenceValue = masterKey;
+            pickupSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            clueGo.name = "ClueNote_R01";
+            clueGo.transform.position = r01.transform.position + new Vector3(-1.7f, 0.78f, -0.35f);
+            clueGo.transform.localScale = new Vector3(0.22f, 0.03f, 0.28f);
+            DebugColor.Apply(clueGo, DebugColor.Note);
+            var note = clueGo.AddComponent<FieldNote>();
+            var noteSo = new SerializedObject(note);
+            noteSo.FindProperty("_promptLabel").stringValue = "Read Note";
+            noteSo.FindProperty("_fragmentText").stringValue =
+                "\"Left the master key in my desk again — third time this month. If R11's " +
+                "stuck shut, that's where it'll be.\"";
+            noteSo.ApplyModifiedPropertiesWithoutUndo();
+
+            if (_pendingLockedDoor != null)
+            {
+                _pendingLockedDoor.SetRequiredItem(masterKey);
+                _pendingLockedDoor.RestoreState(new Door.DoorState(isOpen: false, isLocked: true));
+            }
+            else
+            {
+                Debug.LogError("[Milestone9Level1AssetBuilder] R11's door wasn't captured — the key/lock chain has nothing to unlock.");
+            }
+
+            _ = player;
+        }
+
+        // ---------------------------------------------------------------- jump scares
+
+        private static void BuildJumpScares()
+        {
+            AddJumpScare("R07");
+            AddJumpScare("R09");
+        }
+
+        private static void AddJumpScare(string roomId)
+        {
+            GameObject room = GameObject.Find(roomId);
+            if (room == null)
+            {
+                return;
+            }
+
+            var triggerGo = new GameObject($"JumpScare_{roomId}");
+            triggerGo.transform.SetParent(room.transform, false);
+            triggerGo.transform.localPosition = Vector3.zero;
+            var collider = triggerGo.AddComponent<BoxCollider>();
+            collider.isTrigger = true;
+            collider.size = new Vector3(Level1Layout.RoomDepthX, WallHeight, Level1Layout.RoomWidthZ);
+            triggerGo.AddComponent<AudioSource>();
+
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            visual.name = "ScareVisual";
+            visual.transform.SetParent(triggerGo.transform, false);
+            visual.transform.localPosition = new Vector3(1.5f, 1f, 0f);
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            DebugColor.Apply(visual, DebugColor.Attendant);
+
+            var jumpScare = triggerGo.AddComponent<JumpScareTrigger>();
+            var so = new SerializedObject(jumpScare);
+            so.FindProperty("_scareVisual").objectReferenceValue = visual;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ---------------------------------------------------------------- UI
+
+        private static void BuildInteractionPromptUi(InteractionCaster interactionCaster)
+        {
+            var canvasGo = new GameObject("PromptCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var promptRoot = new GameObject("PromptRoot");
+            promptRoot.transform.SetParent(canvasGo.transform, false);
+            var promptRootRect = promptRoot.AddComponent<RectTransform>();
+            promptRootRect.anchorMin = new Vector2(0.5f, 0.15f);
+            promptRootRect.anchorMax = new Vector2(0.5f, 0.15f);
+            promptRootRect.sizeDelta = new Vector2(400f, 40f);
+
+            var textGo = new GameObject("PromptText");
+            textGo.transform.SetParent(promptRoot.transform, false);
+            var text = textGo.AddComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 24;
+            text.color = Color.white;
+            var textRect = text.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            promptRoot.SetActive(false);
+
+            var promptUi = canvasGo.AddComponent<InteractionPromptUI>();
+            var promptSo = new SerializedObject(promptUi);
+            promptSo.FindProperty("_interactionCaster").objectReferenceValue = interactionCaster;
+            promptSo.FindProperty("_promptText").objectReferenceValue = text;
+            promptSo.FindProperty("_promptRoot").objectReferenceValue = promptRoot;
+            promptSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>Same functional (not styled) screen-space panel Milestones 4-6 already established for GameEvents.LevelCompleted — reused as-is.</summary>
+        private static void BuildLevelCompleteUi()
+        {
+            var canvasGo = new GameObject("LevelCompleteCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var panelRoot = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+            panelRoot.transform.SetParent(canvasGo.transform, false);
+            var panelRect = panelRoot.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.3f, 0.4f);
+            panelRect.anchorMax = new Vector2(0.7f, 0.6f);
+            panelRect.sizeDelta = Vector2.zero;
+            panelRoot.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.85f);
+
+            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(panelRoot.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.text = "You Escaped The Building";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.fontSize = 28;
+            var textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            panelRoot.SetActive(false);
+
+            var levelCompleteUi = canvasGo.AddComponent<LevelCompleteUI>();
+            var so = new SerializedObject(levelCompleteUi);
+            so.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- shared helpers
@@ -335,10 +584,28 @@ namespace EndlessRooms.EditorSetup
             return block;
         }
 
+        private static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path))
+            {
+                return;
+            }
+
+            string parent = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
+            string folderName = System.IO.Path.GetFileName(path);
+
+            if (!string.IsNullOrEmpty(parent) && !AssetDatabase.IsValidFolder(parent))
+            {
+                EnsureFolder(parent);
+            }
+
+            AssetDatabase.CreateFolder(parent, folderName);
+        }
+
         private static void AddSceneToBuildSettings(string path)
         {
-            var scenes = System.Linq.Enumerable.ToList(EditorBuildSettings.scenes);
-            if (scenes.Exists(s => s.path == path))
+            var scenes = EditorBuildSettings.scenes.ToList();
+            if (scenes.Any(s => s.path == path))
             {
                 return;
             }
