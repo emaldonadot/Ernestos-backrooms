@@ -51,7 +51,7 @@ namespace EndlessRooms.EditorSetup
             GameObject levelGo = BuildLevelBuilder();
             PuzzleGateController puzzleGate = BuildPuzzleGate(levelGo);
 
-            BuildVrRig(levelGo, interactAction, out InteractionCaster interactionCaster);
+            BuildVrRig(levelGo, interactAction, out InteractionCaster interactionCaster, out GameObject _);
             BuildWorldSpaceInteractionPromptUi(interactionCaster);
             BuildWorldSpaceLevelCompleteUi();
 
@@ -63,7 +63,7 @@ namespace EndlessRooms.EditorSetup
             Debug.Log($"[Milestone6AssetBuilder] Built and saved '{ScenePath}'.");
         }
 
-        private static InputActionReference LoadInteractActionReference()
+        internal static InputActionReference LoadInteractActionReference()
         {
             var subAssets = AssetDatabase.LoadAllAssetsAtPath(InputActionsPath).OfType<InputActionReference>().ToList();
             InputActionReference reference = subAssets.FirstOrDefault(r => r.action.name == "Interact");
@@ -153,17 +153,18 @@ namespace EndlessRooms.EditorSetup
         /// existing "Interact" input action (which just gained a controller-trigger
         /// binding, see TheEndlessRooms.inputactions) drives it exactly like PC's E key.
         /// </summary>
-        private static void BuildVrRig(GameObject levelGo, InputActionReference interactAction, out InteractionCaster interactionCaster)
+        internal static void BuildVrRig(GameObject levelGo, InputActionReference interactAction, out InteractionCaster interactionCaster, out GameObject rigGo)
         {
             var rigPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RigPrefabPath);
             if (rigPrefab == null)
             {
                 Debug.LogError($"[Milestone6AssetBuilder] Could not load rig prefab at '{RigPrefabPath}'. Was Milestone6Bootstrap.ImportXriStarterAssets run?");
                 interactionCaster = null;
+                rigGo = null;
                 return;
             }
 
-            var rigGo = (GameObject)PrefabUtility.InstantiatePrefab(rigPrefab);
+            rigGo = (GameObject)PrefabUtility.InstantiatePrefab(rigPrefab);
             rigGo.name = "VRPlayer";
 
             Transform locomotion = rigGo.transform.Find("Locomotion");
@@ -227,7 +228,7 @@ namespace EndlessRooms.EditorSetup
         /// InteractionPromptUI/LevelCompleteUI scripts are unchanged from PC; only the
         /// canvas render mode, scale, and parent differ.
         /// </summary>
-        private static void BuildWorldSpaceInteractionPromptUi(InteractionCaster interactionCaster)
+        internal static void BuildWorldSpaceInteractionPromptUi(InteractionCaster interactionCaster)
         {
             Camera headCamera = Object.FindAnyObjectByType<Camera>();
 
