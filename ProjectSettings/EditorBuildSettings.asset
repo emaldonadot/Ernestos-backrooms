@@ -32,6 +32,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/TheEndlessRooms/Scenes/Milestone8_SecretRoomVRTestScene.unity
     guid: 5483043204c1513d78a3c48d62629ba9
+  - enabled: 1
+    path: Assets/TheEndlessRooms/Scenes/Milestone9_Level1TestScene.unity
+    guid: f9aa1f73c59a3bcde9693570648c25e8
   m_configObjects:
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 99316b609be9b70fca2fe04ce06fbabe, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: e01e0718560e92b5da5c4ff2aee2afcb, type: 2}
