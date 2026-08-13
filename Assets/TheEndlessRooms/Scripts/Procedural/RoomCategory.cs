@@ -19,6 +19,8 @@ namespace EndlessRooms.Procedural
         Transitional,
         RareAnomaly,
         Storage,
-        OfficeCluster
+        OfficeCluster,
+        BathroomMen,
+        BathroomWomen
     }
 }

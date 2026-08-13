@@ -20,6 +20,9 @@ namespace EndlessRooms.World
         [SerializeField] private string _customOpenPrompt = "";
         [SerializeField] private string _customClosePrompt = "";
 
+        [Tooltip("Milestone 9: if set, interacting with this door while locked checks the instigator's Inventory for this specific item — if present, the item is consumed and the door unlocks. Leave blank for locks that unlock some other way (e.g. PuzzleGateController).")]
+        [SerializeField] private InventoryItemDefinition _requiredItem;
+
         private float _currentAngle;
 
         public bool IsOpen { get; private set; }
@@ -90,6 +93,11 @@ namespace EndlessRooms.World
                 return string.IsNullOrEmpty(_customClosePrompt) ? "Close Door" : _customClosePrompt;
             }
 
+            if (IsLocked && _requiredItem != null)
+            {
+                return $"Locked (Needs {_requiredItem.DisplayName})";
+            }
+
             return string.IsNullOrEmpty(_customOpenPrompt) ? "Open Door" : _customOpenPrompt;
         }
 
@@ -100,6 +108,12 @@ namespace EndlessRooms.World
             _customClosePrompt = closePrompt;
         }
 
+        /// <summary>Placement-time override wiring the item that unlocks this door. Leave unset for locks that unlock some other way (e.g. PuzzleGateController).</summary>
+        public void SetRequiredItem(InventoryItemDefinition item)
+        {
+            _requiredItem = item;
+        }
+
         public bool CanInteract(InteractionContext context)
         {
             return true;
@@ -107,7 +121,7 @@ namespace EndlessRooms.World
 
         public void Interact(InteractionContext context)
         {
-            if (IsLocked)
+            if (IsLocked && !TryUnlockWithRequiredItem(context))
             {
                 Debug.Log($"'{name}' won't budge — something is blocking the mechanism.", this);
                 return;
@@ -135,6 +149,25 @@ namespace EndlessRooms.World
         internal void SetLocked(bool isLocked)
         {
             IsLocked = isLocked;
+        }
+
+        /// <summary>Consumes <see cref="_requiredItem"/> from the instigator's Inventory and unlocks, or leaves the door locked if it's absent (or there's no required item configured at all).</summary>
+        private bool TryUnlockWithRequiredItem(InteractionContext context)
+        {
+            if (_requiredItem == null || context.Instigator == null)
+            {
+                return false;
+            }
+
+            var inventory = context.Instigator.GetComponentInParent<Inventory>();
+            if (inventory == null || !inventory.HasItem(_requiredItem.ItemId))
+            {
+                return false;
+            }
+
+            inventory.TryRemoveItem(_requiredItem.ItemId);
+            SetLocked(false);
+            return true;
         }
 
         public object CaptureState()

@@ -62,7 +62,7 @@ Confirmed: the corridor-patrolling, chase-on-sight, hide-to-escape creature is t
 
 Built by hand from your reference image: 14 offices (R01–R14), 2 bathrooms (adjacent, per the reference), 2 open-air garden courtyards, one main corridor (start ↔ exit) crossed by one cross corridor, furniture per the furniture guide table.
 
-**Still needed from you**: real-world scale. The reference image has no dimension/scale marker. Proposed defaults, for you to confirm or correct before I build anything: offices ~4m × 5m, corridors ~2.5m wide, courtyards slightly larger given they're open-to-sky. All furniture placeholder collision will maintain the confirmed 1.6m minimum clear width (two players' worth of space) between furniture, and between furniture and walls, verified by actually walking every room before calling it done — same process as the Atrium fixes.
+**Confirmed scale**: offices are 5m × 6m, corridors are 6m wide — conveniently the same 6m unit already used everywhere else in the project (room cell size, wall height/door width conventions), so Level 1's geometry can reuse the same wall/door building blocks as the procedural rooms instead of inventing new ones. Courtyards get roughly the same footprint as a standard office pair. All furniture placeholder collision will maintain the confirmed 1.6m minimum clear width (two players' worth of space) between furniture, and between furniture and walls, verified by actually walking every room before calling it done — same process as the Atrium fixes.
 
 ## Out of scope for this milestone
 
