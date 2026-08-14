@@ -88,9 +88,24 @@ namespace EndlessRooms.AI
             }
         }
 
+        private bool _hasBeenEnabledBefore;
+
         private void OnEnable()
         {
             EnsureInitialized();
+
+            // EnsureInitialized's own door-subscription (via OnLevelBuilt) only ever
+            // runs on the very first OnEnable — fine when a level only builds once, but
+            // Milestone 9's AttendantAppearanceController disables/re-enables this
+            // GameObject repeatedly to make the Attendant appear and disappear, and
+            // OnDisable always unsubscribes. Without this, "investigates recently opened
+            // doors" would silently stop working after the first disable/enable cycle.
+            if (_hasBeenEnabledBefore)
+            {
+                SubscribeToDoors();
+            }
+
+            _hasBeenEnabledBefore = true;
         }
 
         private void OnDisable()
@@ -117,7 +132,24 @@ namespace EndlessRooms.AI
             _homeNodeId = nearEntry.Count > 1 ? nearEntry[1] : nearEntry[0];
             _currentPatrolNodeId = _homeNodeId;
 
-            if (_levelBuilder.TryGetRoomWorldPosition(_homeNodeId, out Vector3 homePosition))
+            ResetToHomePosition();
+
+            UnsubscribeFromDoors();
+            SubscribeToDoors();
+        }
+
+        /// <summary>
+        /// Teleports back to its home node, clears any in-progress path, and starts a
+        /// fresh state machine (so it's always back in Patrol, never stuck resuming
+        /// whatever state it was in before) — the logic <see cref="OnLevelBuilt"/> always
+        /// ran once at level start, now also reusable by
+        /// <c>AttendantAppearanceController</c> every time the Attendant reappears after
+        /// being hidden, so every hunt starts from the same clean spawn instead of
+        /// wherever it physically stopped when it last vanished.
+        /// </summary>
+        public void ResetToHomePosition()
+        {
+            if (_levelBuilder != null && _levelBuilder.TryGetRoomWorldPosition(_homeNodeId, out Vector3 homePosition))
             {
                 _characterController.enabled = false;
                 transform.position = homePosition;
@@ -128,9 +160,7 @@ namespace EndlessRooms.AI
             _waypointIndex = 0;
             _unstickTimer = 0f;
             ResetStuckTracking();
-
-            UnsubscribeFromDoors();
-            SubscribeToDoors();
+            _stateMachine = new AttendantStateMachine(_config);
         }
 
         private void SubscribeToDoors()

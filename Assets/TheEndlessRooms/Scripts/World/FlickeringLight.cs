@@ -35,6 +35,20 @@ namespace EndlessRooms.World
             }
         }
 
+        /// <summary>
+        /// Milestone 9's AttendantAppearanceController toggles this component's enabled
+        /// state on/off as a warning cue rather than leaving it always-on — without this,
+        /// disabling mid-flicker would leave the light stuck dim (or mid-dropout) instead
+        /// of snapping back to a clean, normal intensity.
+        /// </summary>
+        private void OnDisable()
+        {
+            if (_light != null)
+            {
+                _light.intensity = _baseIntensity;
+            }
+        }
+
         private void Update()
         {
             if (_dropoutTimer > 0f)

@@ -64,14 +64,17 @@ namespace EndlessRooms.EditorSetup
             BuildBathroom(levelRoot, Level1Layout.BathroomRow, Side.East, "Bathroom_Men");
 
             GameObject levelGraphGo = BuildLevelGraph();
+            FlickeringLight[] warningLights = BuildCorridorWarningLights(levelRoot);
 
             ActionRefs actionRefs = LoadInputActionReferences();
             var movementConfig = AssetDatabase.LoadAssetAtPath<PlayerMovementConfig>(MovementConfigPath);
-            GameObject playerGo = BuildPlayer(movementConfig, actionRefs, out InteractionCaster interactionCaster);
+            GameObject playerGo = BuildPlayer(movementConfig, actionRefs, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake);
             playerGo.transform.position = new Vector3(0f, 1f, 1.5f);
+            _ = cameraShake;
 
             var attendantConfig = Milestone7AssetBuilder.LoadOrCreateAttendantConfig();
             Milestone7AssetBuilder.BuildAttendant(levelGraphGo, attendantConfig, playerGo.transform);
+            BuildAttendantAppearanceCycle(warningLights);
 
             BuildExitPoint();
             BuildFirstKeyLockChain(playerGo.transform);
@@ -79,6 +82,7 @@ namespace EndlessRooms.EditorSetup
 
             BuildInteractionPromptUi(interactionCaster);
             BuildLevelCompleteUi();
+            BuildGameOverUi();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
@@ -283,6 +287,77 @@ namespace EndlessRooms.EditorSetup
             return levelGraphGo;
         }
 
+        /// <summary>
+        /// One ceiling light per main-corridor row, disabled by default (steady, normal
+        /// light) — FlickeringLight only turns on as AttendantAppearanceController's
+        /// warning cue, not as an always-on ambient effect the way Milestone 8's rooms
+        /// use it.
+        /// </summary>
+        private static FlickeringLight[] BuildCorridorWarningLights(Transform parent)
+        {
+            var lightsGo = new GameObject("CorridorWarningLights");
+            lightsGo.transform.SetParent(parent, false);
+
+            var lights = new FlickeringLight[Level1Layout.TotalRows];
+            for (int row = 1; row <= Level1Layout.TotalRows; row++)
+            {
+                var lightGo = new GameObject($"WarningLight_Row{row}");
+                lightGo.transform.SetParent(lightsGo.transform, false);
+                lightGo.transform.position = Level1Layout.CorridorCellCenter(row) + new Vector3(0f, WallHeight - 0.15f, 0f);
+                lightGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+                var light = lightGo.AddComponent<Light>();
+                light.type = LightType.Point;
+                light.range = 8f;
+                light.intensity = 1.3f;
+                light.color = new Color(0.85f, 0.9f, 1f);
+
+                var flicker = lightGo.AddComponent<FlickeringLight>();
+                flicker.enabled = false;
+                lights[row - 1] = flicker;
+            }
+
+            return lights;
+        }
+
+        /// <summary>
+        /// Wires AttendantAppearanceController onto a dedicated manager object — the
+        /// Attendant GameObject itself (built by Milestone7AssetBuilder.BuildAttendant,
+        /// found by name here since that method doesn't hand back a reference) starts
+        /// inactive; the appearance controller decides when it's actually present.
+        /// </summary>
+        private static void BuildAttendantAppearanceCycle(FlickeringLight[] warningLights)
+        {
+            GameObject attendantGo = GameObject.Find("TheAttendant");
+            if (attendantGo == null)
+            {
+                Debug.LogError("[Milestone9Level1AssetBuilder] Could not find 'TheAttendant' to wire the appearance cycle onto.");
+                return;
+            }
+
+            var attendantController = attendantGo.GetComponent<AttendantController>();
+            attendantGo.SetActive(false);
+
+            var managerGo = new GameObject("AttendantAppearanceManager");
+            var audioSource = managerGo.AddComponent<AudioSource>();
+            audioSource.spatialBlend = 0f;
+
+            var appearance = managerGo.AddComponent<AttendantAppearanceController>();
+            var so = new SerializedObject(appearance);
+            so.FindProperty("_attendantGo").objectReferenceValue = attendantGo;
+            so.FindProperty("_attendant").objectReferenceValue = attendantController;
+            so.FindProperty("_warningAudioSource").objectReferenceValue = audioSource;
+
+            SerializedProperty lightsProp = so.FindProperty("_warningLights");
+            lightsProp.arraySize = warningLights.Length;
+            for (int i = 0; i < warningLights.Length; i++)
+            {
+                lightsProp.GetArrayElementAtIndex(i).objectReferenceValue = warningLights[i];
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         // ---------------------------------------------------------------- player
 
         private struct ActionRefs
@@ -319,7 +394,7 @@ namespace EndlessRooms.EditorSetup
             };
         }
 
-        private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, out InteractionCaster interactionCaster)
+        private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake)
         {
             var playerGo = new GameObject("Player") { tag = "Player" };
 
@@ -332,11 +407,24 @@ namespace EndlessRooms.EditorSetup
             cameraPivot.SetParent(playerGo.transform, false);
             cameraPivot.localPosition = new Vector3(0f, 1.6f, 0f);
 
+            // Milestone 9 fix: the earlier pass omitted this entirely (same gap found
+            // and fixed in Milestone8AssetBuilder's PC rig) — without a CameraShakeEffect
+            // component somewhere under the player, AttendantController.HandleCapture's
+            // shake intensity has nothing to apply to, so getting caught feels like
+            // nothing happened even once a real capture consequence exists.
+            var shakeAnchor = new GameObject("CameraShakeAnchor").transform;
+            shakeAnchor.SetParent(cameraPivot, false);
+
             var cameraGo = new GameObject("PlayerCamera");
-            cameraGo.transform.SetParent(cameraPivot, false);
+            cameraGo.transform.SetParent(shakeAnchor, false);
             var camera = cameraGo.AddComponent<Camera>();
             camera.tag = "MainCamera";
             cameraGo.AddComponent<AudioListener>();
+
+            cameraShake = shakeAnchor.gameObject.AddComponent<CameraShakeEffect>();
+            var shakeSo = new SerializedObject(cameraShake);
+            shakeSo.FindProperty("_shakeTarget").objectReferenceValue = cameraGo.transform;
+            shakeSo.ApplyModifiedPropertiesWithoutUndo();
 
             var playerController = playerGo.AddComponent<PlayerController>();
             var controllerSo = new SerializedObject(playerController);
@@ -551,6 +639,43 @@ namespace EndlessRooms.EditorSetup
             var so = new SerializedObject(levelCompleteUi);
             so.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>Same functional panel shape as BuildLevelCompleteUi, driven by GameEvents.PlayerCaptured instead — the "lose" consequence that was previously missing entirely.</summary>
+        private static void BuildGameOverUi()
+        {
+            var canvasGo = new GameObject("GameOverCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var panelRoot = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+            panelRoot.transform.SetParent(canvasGo.transform, false);
+            var panelRect = panelRoot.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.3f, 0.4f);
+            panelRect.anchorMax = new Vector2(0.7f, 0.6f);
+            panelRect.sizeDelta = Vector2.zero;
+            panelRoot.GetComponent<Image>().color = new Color(0.4f, 0f, 0f, 0.9f);
+
+            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(panelRoot.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.text = "You Were Caught";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.fontSize = 28;
+            var textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            panelRoot.SetActive(false);
+
+            var gameOverUi = canvasGo.AddComponent<GameOverController>();
+            var so2 = new SerializedObject(gameOverUi);
+            so2.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
+            so2.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- shared helpers
