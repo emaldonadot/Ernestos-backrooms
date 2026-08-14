@@ -66,9 +66,10 @@ namespace EndlessRooms.AI
             }
         }
 
+        /// <summary>Skips the clap if the previous one is still playing — the thunder clip runs long, so without this a fast flash cadence would stack overlapping claps into what sounds like one continuous rumble instead of a spaced-out storm.</summary>
         private void HandleLightningFlash()
         {
-            if (_thunderAudioSource != null && _thunderSound != null)
+            if (_thunderAudioSource != null && _thunderSound != null && !_thunderAudioSource.isPlaying)
             {
                 _thunderAudioSource.PlayOneShot(_thunderSound);
             }

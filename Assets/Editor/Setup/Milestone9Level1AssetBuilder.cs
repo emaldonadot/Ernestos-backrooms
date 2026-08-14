@@ -1087,8 +1087,10 @@ namespace EndlessRooms.EditorSetup
 
             var screamAudioSource = canvasGo.AddComponent<AudioSource>();
             screamAudioSource.spatialBlend = 0f;
+            screamAudioSource.volume = 1f;
             var heartbeatAudioSource = canvasGo.AddComponent<AudioSource>();
             heartbeatAudioSource.spatialBlend = 0f;
+            heartbeatAudioSource.volume = 1f;
 
             var vignette = canvasGo.AddComponent<HeartbeatVignetteController>();
             var so = new SerializedObject(vignette);

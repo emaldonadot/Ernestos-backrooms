@@ -4,11 +4,14 @@ using UnityEngine;
 namespace EndlessRooms.World
 {
     /// <summary>
-    /// A harmless, one-shot scare — Milestone 9's distinction from the real threat (The
+    /// A harmless scare — Milestone 9's distinction from the real threat (The
     /// Attendant, unchanged from Milestone 7): no perception, no state machine, no
-    /// danger. On the player entering the trigger volume, a placeholder visual appears
-    /// briefly with a sting sound, then the trigger permanently disables itself. Same
-    /// "player-tag trigger volume" shape as <see cref="RoomTrigger"/>.
+    /// danger, and entirely independent of the Attendant's own appearance/storm cycle —
+    /// it can catch the player any time they wander back into the room, storm or not.
+    /// On the player entering the trigger volume, a placeholder visual appears briefly
+    /// with a sting sound, then the trigger goes on cooldown (not a permanent
+    /// one-and-done) so it can startle the player again later. Same "player-tag trigger
+    /// volume" shape as <see cref="RoomTrigger"/>.
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public sealed class JumpScareTrigger : MonoBehaviour
@@ -17,10 +20,12 @@ namespace EndlessRooms.World
         [SerializeField] private GameObject _scareVisual;
         [SerializeField] private AudioClip _scareSound;
         [SerializeField] private float _visualDuration = 1.5f;
+        [Tooltip("Seconds after a scare before this trigger can fire again.")]
+        [SerializeField] private float _cooldownSeconds = 25f;
 
         private Collider _collider;
         private AudioSource _audioSource;
-        private bool _hasTriggered;
+        private bool _isCoolingDown;
 
         private void Awake()
         {
@@ -35,12 +40,12 @@ namespace EndlessRooms.World
 
         private void OnTriggerEnter(Collider other)
         {
-            if (_hasTriggered || !other.CompareTag("Player"))
+            if (_isCoolingDown || !other.CompareTag("Player"))
             {
                 return;
             }
 
-            _hasTriggered = true;
+            _isCoolingDown = true;
             _collider.enabled = false;
             StartCoroutine(PlayScare());
         }
@@ -63,6 +68,11 @@ namespace EndlessRooms.World
             {
                 _scareVisual.SetActive(false);
             }
+
+            yield return new WaitForSeconds(Mathf.Max(0f, _cooldownSeconds - _visualDuration));
+
+            _collider.enabled = true;
+            _isCoolingDown = false;
         }
     }
 }

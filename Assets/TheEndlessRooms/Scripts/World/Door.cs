@@ -23,7 +23,11 @@ namespace EndlessRooms.World
         [Tooltip("Milestone 9: if set, interacting with this door while locked checks the instigator's Inventory for this specific item — if present, the item is consumed and the door unlocks. Leave blank for locks that unlock some other way (e.g. PuzzleGateController).")]
         [SerializeField] private InventoryItemDefinition _requiredItem;
 
+        [Tooltip("Seconds an open door stays open before swinging shut on its own. 0 or less disables auto-close.")]
+        [SerializeField] private float _autoCloseSeconds = 30f;
+
         private float _currentAngle;
+        private float _autoCloseTimer;
 
         public bool IsOpen { get; private set; }
         public bool IsLocked { get; private set; }
@@ -84,6 +88,15 @@ namespace EndlessRooms.World
             {
                 _hinge.localRotation = Quaternion.Euler(0f, _currentAngle, 0f);
             }
+
+            if (IsOpen && _autoCloseSeconds > 0f)
+            {
+                _autoCloseTimer -= Time.deltaTime;
+                if (_autoCloseTimer <= 0f)
+                {
+                    SetOpen(false);
+                }
+            }
         }
 
         public string GetInteractionPrompt()
@@ -143,6 +156,7 @@ namespace EndlessRooms.World
         internal void SetOpen(bool isOpen)
         {
             IsOpen = isOpen;
+            _autoCloseTimer = isOpen ? _autoCloseSeconds : 0f;
             DoorToggled?.Invoke(this);
         }
 
@@ -185,6 +199,7 @@ namespace EndlessRooms.World
             IsOpen = doorState.IsOpen;
             IsLocked = doorState.IsLocked;
             _currentAngle = IsOpen ? _openAngle : 0f;
+            _autoCloseTimer = IsOpen ? _autoCloseSeconds : 0f;
         }
 
         [Serializable]

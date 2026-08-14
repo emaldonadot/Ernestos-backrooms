@@ -14,11 +14,14 @@ namespace EndlessRooms.World
         [SerializeField] private float _baseIntensity = 0.12f;
         [SerializeField] private float _flashIntensity = 3.5f;
         [SerializeField] private float _flashDuration = 0.12f;
-        [Tooltip("Chance per second of a flash while storming.")]
-        [SerializeField, Range(0f, 2f)] private float _flashChancePerSecond = 0.25f;
+        [Tooltip("Chance per second of a flash while storming, once past the minimum gap below.")]
+        [SerializeField, Range(0f, 2f)] private float _flashChancePerSecond = 0.08f;
+        [Tooltip("Hard floor on the gap between flashes — without this, pure chance can still cluster flashes back-to-back.")]
+        [SerializeField] private float _minSecondsBetweenFlashes = 8f;
 
         private bool _storming;
         private float _flashTimer;
+        private float _cooldownTimer;
 
         /// <summary>Raised the instant a flash triggers — AttendantAppearanceController pairs a thunder sound to this instead of running its own separate random timer.</summary>
         public event System.Action OnFlash;
@@ -34,6 +37,11 @@ namespace EndlessRooms.World
 
         private void Update()
         {
+            if (_cooldownTimer > 0f)
+            {
+                _cooldownTimer -= Time.deltaTime;
+            }
+
             if (_light == null)
             {
                 return;
@@ -50,7 +58,7 @@ namespace EndlessRooms.World
                 return;
             }
 
-            if (!_storming)
+            if (!_storming || _cooldownTimer > 0f)
             {
                 return;
             }
@@ -59,6 +67,7 @@ namespace EndlessRooms.World
             {
                 _light.intensity = _flashIntensity;
                 _flashTimer = _flashDuration;
+                _cooldownTimer = _minSecondsBetweenFlashes;
                 OnFlash?.Invoke();
             }
         }
