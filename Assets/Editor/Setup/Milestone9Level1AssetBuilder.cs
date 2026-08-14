@@ -49,6 +49,20 @@ namespace EndlessRooms.EditorSetup
         private const string DoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_Level1.mat";
         private const float WallTextureMetersPerTile = 2f; // WallAlbedo_Level1.png is a tileable ~2m x 2m square texture
 
+        private const string CarpetTexturePath = "Assets/TheEndlessRooms/Art/Textures/Carpet_Level1.png";
+        private const string CeilingTexturePath = "Assets/TheEndlessRooms/Art/Textures/Ceiling_Level1.png";
+        private const string CarpetMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Carpet_Level1.mat";
+        private const string CeilingMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Ceiling_Level1.mat";
+        // Carpet_Level1.png already bakes in a visible tile grid, so tiling it too
+        // tightly would double up grid lines; treated as one big 4m x 4m patch instead.
+        private const float CarpetTextureMetersPerTile = 4f;
+        private const float CeilingTextureMetersPerTile = 2.5f;
+
+        private const string MenBathroomDoorTexturePath = "Assets/TheEndlessRooms/Art/Textures/Door_BathroomMen_Level1.png";
+        private const string WomenBathroomDoorTexturePath = "Assets/TheEndlessRooms/Art/Textures/Door_BathroomWomen_Level1.png";
+        private const string MenBathroomDoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_BathroomMen_Level1.mat";
+        private const string WomenBathroomDoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_BathroomWomen_Level1.mat";
+
         private const string ThunderClipPath = "Assets/TheEndlessRooms/Audio/ThunderCrash_Level1.wav";
         private const string ScreamClipPath = "Assets/TheEndlessRooms/Audio/CaptureScream_Level1.wav";
         private const string HeartbeatClipPath = "Assets/TheEndlessRooms/Audio/CaptureHeartbeat_Level1.wav";
@@ -134,9 +148,15 @@ namespace EndlessRooms.EditorSetup
             // horizontally here so the handle reads on the opposite side from the
             // source art.
             Material doorMaterial = CreateSimpleTexturedMaterial(DoorTexturePath, DoorMaterialPath, mirrorHorizontal: true);
+            Material carpetMaterial = CreateSimpleTexturedMaterial(CarpetTexturePath, CarpetMaterialPath, mirrorHorizontal: false);
+            Material ceilingMaterial = CreateSimpleTexturedMaterial(CeilingTexturePath, CeilingMaterialPath, mirrorHorizontal: false);
+            Material menBathroomDoorMaterial = CreateSimpleTexturedMaterial(MenBathroomDoorTexturePath, MenBathroomDoorMaterialPath, mirrorHorizontal: true);
+            Material womenBathroomDoorMaterial = CreateSimpleTexturedMaterial(WomenBathroomDoorTexturePath, WomenBathroomDoorMaterialPath, mirrorHorizontal: true);
 
             int wallCount = 0;
             int doorCount = 0;
+            int floorCount = 0;
+            int ceilingCount = 0;
 
             foreach (Transform t in levelRoot.GetComponentsInChildren<Transform>(true))
             {
@@ -156,22 +176,52 @@ namespace EndlessRooms.EditorSetup
                     // The thinnest axis (WallThickness) is never the visible face, so the
                     // other two localScale components are the actual width/height to tile
                     // across.
-                    float[] dims = { t.localScale.x, t.localScale.y, t.localScale.z };
-                    System.Array.Sort(dims);
-                    Material instanceMaterial = renderer.material;
-                    instanceMaterial.mainTextureScale = new Vector2(dims[2] / WallTextureMetersPerTile, dims[1] / WallTextureMetersPerTile);
+                    ApplyPerInstanceTiling(renderer, t.localScale, WallTextureMetersPerTile);
                     wallCount++;
                 }
-                else if (doorMaterial != null && t.name == "DoorPanel")
+                else if (t.name == "DoorPanel")
                 {
-                    // DoorWidth x WallHeight (2m x 3m) exactly matches Door_Level1.png's
-                    // 2:3 aspect ratio, so this maps once with no tiling distortion.
-                    renderer.sharedMaterial = doorMaterial;
-                    doorCount++;
+                    string hingeName = t.parent != null ? t.parent.name : "";
+                    Material resolvedDoorMaterial = hingeName switch
+                    {
+                        "Bathroom_Men_Door" => menBathroomDoorMaterial,
+                        "Bathroom_Women_Door" => womenBathroomDoorMaterial,
+                        _ => doorMaterial,
+                    };
+
+                    if (resolvedDoorMaterial != null)
+                    {
+                        // DoorWidth x WallHeight (2m x 3m) exactly matches every door
+                        // texture's 2:3 aspect ratio, so this maps once with no tiling
+                        // distortion.
+                        renderer.sharedMaterial = resolvedDoorMaterial;
+                        doorCount++;
+                    }
+                }
+                else if (carpetMaterial != null && (t.name == "Floor" || t.name.StartsWith("Floor_")))
+                {
+                    renderer.sharedMaterial = carpetMaterial;
+                    ApplyPerInstanceTiling(renderer, t.localScale, CarpetTextureMetersPerTile);
+                    floorCount++;
+                }
+                else if (ceilingMaterial != null && (t.name == "Ceiling" || t.name.StartsWith("Ceiling_")))
+                {
+                    renderer.sharedMaterial = ceilingMaterial;
+                    ApplyPerInstanceTiling(renderer, t.localScale, CeilingTextureMetersPerTile);
+                    ceilingCount++;
                 }
             }
 
-            Debug.Log($"[Milestone9Level1AssetBuilder] Applied wall/door materials to {wallCount} wall segments and {doorCount} door panels.");
+            Debug.Log($"[Milestone9Level1AssetBuilder] Applied materials: {wallCount} walls, {doorCount} doors, {floorCount} floors, {ceilingCount} ceilings.");
+        }
+
+        /// <summary>Cube UVs always span 0-1 per face regardless of localScale — this makes a tiled material's repeat count match the object's actual real-world size instead of showing one stretched tile. The thinnest axis (wall/floor thickness) is never the visible face.</summary>
+        private static void ApplyPerInstanceTiling(Renderer renderer, Vector3 localScale, float metersPerTile)
+        {
+            float[] dims = { localScale.x, localScale.y, localScale.z };
+            System.Array.Sort(dims);
+            Material instanceMaterial = renderer.material;
+            instanceMaterial.mainTextureScale = new Vector2(dims[2] / metersPerTile, dims[1] / metersPerTile);
         }
 
         /// <summary>
@@ -496,7 +546,20 @@ namespace EndlessRooms.EditorSetup
 
             if (spec.UseMeetingTable)
             {
-                AddFurniture(room, "MeetingTable", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.5f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 2.2f), hideable: false);
+                // Centered in the room (not against a wall) with its 2.4m length along
+                // the room's depth axis, chairs lined up along both long sides.
+                Vector3 tablePos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(0f, floorY, 0f));
+                Level1FurnitureBuilder.BuildMeetingTable(room, "MeetingTable", tablePos, Quaternion.LookRotation(intoRoomFromBackWall));
+
+                float[] chairOffsets = { -0.8f, 0f, 0.8f };
+                foreach (float offset in chairOffsets)
+                {
+                    Vector3 nearSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(offset, floorY, 0.87f));
+                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", nearSideChairPos, Quaternion.LookRotation(Vector3.back));
+
+                    Vector3 farSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(offset, floorY, -0.87f));
+                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", farSideChairPos, Quaternion.LookRotation(Vector3.forward));
+                }
             }
             else
             {
@@ -537,8 +600,14 @@ namespace EndlessRooms.EditorSetup
 
             BuildRoomShellWithDoor(roomGo.transform, side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out _);
 
-            AddFurniture(roomGo.transform, "Toilet", Level1Layout.LocalToWorld(center, side, new Vector3(-2.0f, 0.4f, -2.0f)), new Vector3(0.6f, 0.8f, 0.6f), hideable: false);
-            AddFurniture(roomGo.transform, "Sink", Level1Layout.LocalToWorld(center, side, new Vector3(-2.0f, 0.45f, 2.0f)), new Vector3(0.6f, 0.9f, 0.6f), hideable: false);
+            float floorY = WallThickness / 2f;
+            Vector3 intoRoomFromBackWall = Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.right);
+
+            Vector3 toiletPos = Level1Layout.LocalToWorld(center, side, new Vector3(-1.85f, floorY, -2.0f));
+            Level1FurnitureBuilder.BuildToilet(roomGo.transform, "Toilet", toiletPos, Quaternion.LookRotation(intoRoomFromBackWall));
+
+            Vector3 sinkPos = Level1Layout.LocalToWorld(center, side, new Vector3(-1.85f, floorY, 2.0f));
+            Level1FurnitureBuilder.BuildSink(roomGo.transform, "Sink", sinkPos, Quaternion.LookRotation(intoRoomFromBackWall));
         }
 
         // ---------------------------------------------------------------- courtyards
@@ -576,7 +645,12 @@ namespace EndlessRooms.EditorSetup
             main.startLifetime = 1.2f;
             main.startSpeed = 0f;
             main.startSize = 0.03f;
-            main.startColor = new Color(0.75f, 0.8f, 0.9f, 0.55f);
+            // Plain white + full alpha here — the rain material's own color/alpha (see
+            // GetOrCreateRainMaterial) is the single source of truth for tint and
+            // transparency, since whether a given shader multiplies material color by
+            // particle vertex color isn't guaranteed, and doubling up two independent
+            // alpha values would just make the rain fainter than intended for no reason.
+            main.startColor = Color.white;
             main.maxParticles = 500;
 
             ParticleSystem.EmissionModule emission = rain.emission;
@@ -594,9 +668,44 @@ namespace EndlessRooms.EditorSetup
             renderer.renderMode = ParticleSystemRenderMode.Stretch;
             renderer.velocityScale = 0.05f;
             renderer.lengthScale = 2.5f;
+            // Unity's default particle material is lit, so the scene's blue-tinted
+            // moonlight/ambient was mixing with the rain's own tint into a purple-ish
+            // result — an explicit unlit transparent material renders the intended blue
+            // directly, with no lighting interaction to shift it.
+            renderer.sharedMaterial = GetOrCreateRainMaterial();
 
             rain.Stop(true, ParticleSystemStopBehavior.StopEmitting);
             return rain;
+        }
+
+        private static Material GetOrCreateRainMaterial()
+        {
+            const string path = "Assets/TheEndlessRooms/Art/Materials/Rain_Level1.mat";
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            // The plain Unlit shader (not a particle-specific variant) — already used
+            // successfully elsewhere in this project (walls/doors), so its property
+            // names are known-good rather than guessed.
+            var material = new Material(Shader.Find("Universal Render Pipeline/Unlit"))
+            {
+                color = new Color(0.55f, 0.7f, 0.95f, 0.55f),
+            };
+            material.SetFloat("_Surface", 1f); // Transparent
+            material.SetFloat("_Blend", 0f); // Alpha blend
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            material.SetInt("_ZWrite", 0);
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+
+            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+            AssetDatabase.CreateAsset(material, path);
+            return material;
         }
 
         // ---------------------------------------------------------------- level graph / Attendant

@@ -50,14 +50,47 @@ namespace EndlessRooms.EditorSetup
             }
         }
 
-        private static GameObject Part(Transform parent, string name, Vector3 localPosition, Vector3 size)
+        private const string PorcelainMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Porcelain_Level1.mat";
+        private static Material _porcelainMaterial;
+
+        private static Material PorcelainMaterial
+        {
+            get
+            {
+                if (_porcelainMaterial != null)
+                {
+                    return _porcelainMaterial;
+                }
+
+                _porcelainMaterial = AssetDatabase.LoadAssetAtPath<Material>(PorcelainMaterialPath);
+                if (_porcelainMaterial != null)
+                {
+                    return _porcelainMaterial;
+                }
+
+                if (!AssetDatabase.IsValidFolder("Assets/TheEndlessRooms/Art/Materials"))
+                {
+                    AssetDatabase.CreateFolder("Assets/TheEndlessRooms/Art", "Materials");
+                }
+
+                _porcelainMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new Color(0.72f, 0.71f, 0.66f),
+                };
+                _porcelainMaterial.SetFloat("_Smoothness", 0.45f);
+                AssetDatabase.CreateAsset(_porcelainMaterial, PorcelainMaterialPath);
+                return _porcelainMaterial;
+            }
+        }
+
+        private static GameObject Part(Transform parent, string name, Vector3 localPosition, Vector3 size, Material material = null)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
             go.transform.SetParent(parent, false);
             go.transform.localPosition = localPosition;
             go.transform.localScale = size;
-            go.GetComponent<Renderer>().sharedMaterial = WornWoodMaterial;
+            go.GetComponent<Renderer>().sharedMaterial = material != null ? material : WornWoodMaterial;
             return go;
         }
 
@@ -209,6 +242,63 @@ namespace EndlessRooms.EditorSetup
             var hideAnchor = new GameObject("HideAnchor");
             hideAnchor.transform.SetParent(root.transform, false);
             hideAnchor.transform.localPosition = Vector3.zero;
+
+            return root;
+        }
+
+        /// <summary>Local +Z is the front (where a person sits, facing away from the tank).</summary>
+        internal static GameObject BuildToilet(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Bowl", new Vector3(0f, 0.20f, 0.09f), new Vector3(0.36f, 0.40f, 0.50f), PorcelainMaterial);
+            Part(root.transform, "Seat", new Vector3(0f, 0.425f, 0.02f), new Vector3(0.36f, 0.05f, 0.44f), PorcelainMaterial);
+            Part(root.transform, "Tank", new Vector3(0f, 0.57f, -0.25f), new Vector3(0.38f, 0.34f, 0.18f), PorcelainMaterial);
+            Part(root.transform, "TankLid", new Vector3(0f, 0.76f, -0.25f), new Vector3(0.38f, 0.04f, 0.18f), PorcelainMaterial);
+
+            return root;
+        }
+
+        /// <summary>Local +Z is the front (the faucet-and-basin side, facing away from the wall).</summary>
+        internal static GameObject BuildSink(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Basin", new Vector3(0f, 0.77f, 0f), new Vector3(0.60f, 0.16f, 0.48f), PorcelainMaterial);
+            Part(root.transform, "Pedestal", new Vector3(0f, 0.345f, 0f), new Vector3(0.20f, 0.69f, 0.18f), PorcelainMaterial);
+            Part(root.transform, "Faucet", new Vector3(0f, 0.94f, -0.12f), new Vector3(0.04f, 0.18f, 0.04f), PorcelainMaterial);
+            Part(root.transform, "HandleHot", new Vector3(-0.15f, 0.87f, -0.1f), new Vector3(0.05f, 0.05f, 0.05f), PorcelainMaterial);
+            Part(root.transform, "HandleCold", new Vector3(0.15f, 0.87f, -0.1f), new Vector3(0.05f, 0.05f, 0.05f), PorcelainMaterial);
+
+            return root;
+        }
+
+        /// <summary>Local +Z is unused (symmetric) — chairs surround it on both long sides (local X), so orientation barely matters.</summary>
+        internal static GameObject BuildMeetingTable(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float length = 2.40f;
+            const float width = 1.00f;
+            const float tableHeight = 0.75f;
+            const float topThickness = 0.04f;
+            const float legThickness = 0.08f;
+            const float legHeight = 0.71f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Tabletop", new Vector3(0f, tableHeight - topThickness / 2f, 0f), new Vector3(width, topThickness, length));
+
+            float legX = width / 2f - legThickness / 2f - 0.02f;
+            float legZ = length / 2f - legThickness / 2f - 0.06f;
+            Part(root.transform, "Leg_FrontLeft", new Vector3(-legX, legHeight / 2f, legZ), new Vector3(legThickness, legHeight, legThickness));
+            Part(root.transform, "Leg_FrontRight", new Vector3(legX, legHeight / 2f, legZ), new Vector3(legThickness, legHeight, legThickness));
+            Part(root.transform, "Leg_BackLeft", new Vector3(-legX, legHeight / 2f, -legZ), new Vector3(legThickness, legHeight, legThickness));
+            Part(root.transform, "Leg_BackRight", new Vector3(legX, legHeight / 2f, -legZ), new Vector3(legThickness, legHeight, legThickness));
 
             return root;
         }
