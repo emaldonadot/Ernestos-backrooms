@@ -37,6 +37,12 @@ namespace EndlessRooms.EditorSetup
         private const string JumpScareSpritePath = "Assets/TheEndlessRooms/Art/Textures/JumpScareMonster.png";
         private const float JumpScareSpritePixelsPerUnit = 700f;
 
+        private const string WallTexturePath = "Assets/TheEndlessRooms/Art/Textures/WallAlbedo_Level1.png";
+        private const string DoorTexturePath = "Assets/TheEndlessRooms/Art/Textures/Door_Level1.png";
+        private const string WallMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Wall_Level1.mat";
+        private const string DoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_Level1.mat";
+        private const float WallTextureMetersPerTile = 2f; // WallAlbedo_Level1.png is a tileable ~2m x 2m square texture
+
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
         {
@@ -86,10 +92,90 @@ namespace EndlessRooms.EditorSetup
             BuildLevelCompleteUi();
             BuildGameOverUi();
 
+            ApplyLevel1Materials(levelRoot);
+
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
 
             Debug.Log($"[Milestone9Level1AssetBuilder] Built and saved '{ScenePath}' — {Level1Layout.Offices.Length} offices, 2 bathrooms, 2 courtyards, player, Attendant, exit, one key/lock chain, jump scares.");
+        }
+
+        // ---------------------------------------------------------------- materials
+
+        /// <summary>
+        /// Replaces the plain default-material walls/doors with real textures. Runs as
+        /// a post-pass over the finished hierarchy (matching every "Wall_"-prefixed and
+        /// "DoorPanel" object by name, recursively — Level 1's rooms are nested several
+        /// levels deep, unlike Milestone 8's flat shared room prefab) rather than
+        /// threading a material through every CreateBlock/PlaceDoor call site.
+        /// </summary>
+        private static void ApplyLevel1Materials(Transform levelRoot)
+        {
+            Material wallMaterial = CreateSimpleTexturedMaterial(WallTexturePath, WallMaterialPath);
+            Material doorMaterial = CreateSimpleTexturedMaterial(DoorTexturePath, DoorMaterialPath);
+
+            int wallCount = 0;
+            int doorCount = 0;
+
+            foreach (Transform t in levelRoot.GetComponentsInChildren<Transform>(true))
+            {
+                var renderer = t.GetComponent<Renderer>();
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                if (wallMaterial != null && t.name.StartsWith("Wall_"))
+                {
+                    renderer.sharedMaterial = wallMaterial;
+
+                    // A cube's UVs always span 0-1 per face regardless of localScale, so
+                    // without this every wall segment — corridor end caps, 6m room walls,
+                    // 2m door-flanking strips — would show the exact same single tile.
+                    // The thinnest axis (WallThickness) is never the visible face, so the
+                    // other two localScale components are the actual width/height to tile
+                    // across.
+                    float[] dims = { t.localScale.x, t.localScale.y, t.localScale.z };
+                    System.Array.Sort(dims);
+                    Material instanceMaterial = renderer.material;
+                    instanceMaterial.mainTextureScale = new Vector2(dims[2] / WallTextureMetersPerTile, dims[1] / WallTextureMetersPerTile);
+                    wallCount++;
+                }
+                else if (doorMaterial != null && t.name == "DoorPanel")
+                {
+                    // DoorWidth x WallHeight (2m x 3m) exactly matches Door_Level1.png's
+                    // 2:3 aspect ratio, so this maps once with no tiling distortion.
+                    renderer.sharedMaterial = doorMaterial;
+                    doorCount++;
+                }
+            }
+
+            Debug.Log($"[Milestone9Level1AssetBuilder] Applied wall/door materials to {wallCount} wall segments and {doorCount} door panels.");
+        }
+
+        /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
+        private static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath)
+        {
+            var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            if (albedo == null)
+            {
+                Debug.LogError($"[Milestone9Level1AssetBuilder] Could not find '{texturePath}'.");
+                return null;
+            }
+
+            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            material.SetTexture("_BaseMap", albedo);
+            material.SetFloat("_Smoothness", 0.25f);
+
+            if (AssetDatabase.LoadAssetAtPath<Material>(materialPath) != null)
+            {
+                AssetDatabase.DeleteAsset(materialPath);
+            }
+
+            AssetDatabase.CreateAsset(material, materialPath);
+            return material;
         }
 
         // ---------------------------------------------------------------- corridor shell
@@ -217,6 +303,16 @@ namespace EndlessRooms.EditorSetup
         private static void BuildOfficeFurniture(Transform room, OfficeSpec spec)
         {
             Vector3 roomCenter = room.position;
+            float floorY = WallThickness / 2f;
+
+            // Local +X always points from the back wall into the room (see
+            // Level1Layout.LocalToWorld); local +Z is unmirrored room width. Passing a
+            // zero origin turns LocalToWorld into a pure local->world direction
+            // transform, so furniture models (authored with local +Z = "front") end up
+            // facing the right way regardless of which side of the corridor the office
+            // is on.
+            Vector3 intoRoomFromBackWall = Level1Layout.LocalToWorld(Vector3.zero, spec.Side, Vector3.right);
+            Vector3 intoRoomFromSideWall = Level1Layout.LocalToWorld(Vector3.zero, spec.Side, Vector3.back);
 
             if (spec.UseMeetingTable)
             {
@@ -224,14 +320,25 @@ namespace EndlessRooms.EditorSetup
             }
             else
             {
-                AddFurniture(room, "Desk", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 0.375f, 0f)), new Vector3(1.0f, 0.75f, 1.4f), hideable: true);
+                Vector3 deskPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, floorY, 0f));
+                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(intoRoomFromBackWall));
+                desk.AddComponent<HidingSpot>();
+
+                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.05f, floorY, 0f));
+                Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(-intoRoomFromBackWall));
             }
 
-            AddFurniture(room, "Closet", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, 1.0f, -2.3f)), new Vector3(0.6f, 2.0f, 0.9f), hideable: true);
+            Vector3 closetPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, floorY, -2.3f));
+            GameObject closet = Level1FurnitureBuilder.BuildCloset(room, "Closet", closetPos, Quaternion.LookRotation(intoRoomFromBackWall));
+            closet.AddComponent<HidingSpot>();
 
             if (spec.HasShelf)
             {
-                AddFurniture(room, "Shelf", Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-2.15f, 0.65f, 2.3f)), new Vector3(0.4f, 1.3f, 1.2f), hideable: false);
+                // -1.85 (not -2.15): the bookshelf's 0.9m width runs along room Z once
+                // rotated to face the side wall, so its X-center needs enough clearance
+                // from the back wall (X=-2.5) for that width's near edge not to clip it.
+                Vector3 shelfPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.85f, floorY, 2.7f));
+                Level1FurnitureBuilder.BuildBookshelf(room, "Shelf", shelfPos, Quaternion.LookRotation(intoRoomFromSideWall));
             }
         }
 
@@ -278,6 +385,12 @@ namespace EndlessRooms.EditorSetup
             var so = new SerializedObject(builder);
             so.FindProperty("_cellSize").floatValue = Level1Layout.GraphCellSize;
             so.FindProperty("_buildOnStart").boolValue = false;
+            // Level 1's floor (see BuildMainCorridor etc.) is a WallThickness-thick block
+            // centered on Y=0, so its walkable top surface is at WallThickness/2, not the
+            // ProceduralLevelBuilder default of Y=1 tuned for the old ModularRoomBase
+            // prefab. The Attendant applies no gravity of its own, so this has to be
+            // exact or it hovers/sinks relative to the real floor.
+            so.FindProperty("_roomAnchorHeight").floatValue = WallThickness / 2f;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             var providerGo = new GameObject("Level1RoomGraphProvider");
@@ -559,7 +672,7 @@ namespace EndlessRooms.EditorSetup
 
             var visual = new GameObject("ScareVisual");
             visual.transform.SetParent(triggerGo.transform, false);
-            visual.transform.localPosition = new Vector3(1.5f, 0f, 0f);
+            visual.transform.localPosition = new Vector3(1.5f, WallThickness / 2f, 0f); // floor's actual walkable top surface, not its Y=0 center
 
             // BottomCenter alignment so this transform sits at the figure's feet (floor level).
             Sprite sprite = EditorSpriteImportUtility.LoadOrImportSprite(JumpScareSpritePath, JumpScareSpritePixelsPerUnit, SpriteAlignment.BottomCenter);

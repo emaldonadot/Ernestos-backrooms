@@ -25,6 +25,8 @@ namespace EndlessRooms.World
         [SerializeField] private float _wallHeight = 3f;
         [SerializeField] private float _wallThickness = 0.2f;
         [SerializeField] private float _doorWidth = 2f;
+        [Tooltip("Y value used for entry/room/waypoint world positions (GetEntryWorldPosition, TryGetRoomWorldPosition) — NOT the room prefab's own placement Y (always 0). Defaults to 1 to match the shared ModularRoomBase prefab's floor height; a hand-built level with a different actual floor height (e.g. UseExternalGraph) should set this to match, since characters without gravity (The Attendant) never self-correct a mismatched Y.")]
+        [SerializeField] private float _roomAnchorHeight = 1f;
 
         [Header("Materials")]
         [Tooltip("Leave unset to keep the flat DebugColor.Door placeholder. Doors are built fresh at runtime (unlike walls, which share one prefab), so a real material has to be assigned here rather than fixed once on a shared asset.")]
@@ -115,7 +117,7 @@ namespace EndlessRooms.World
         public Vector3 GetEntryWorldPosition()
         {
             RoomNode entryNode = _lastGraph.GetNode(_lastGraph.EntryNodeId);
-            return transform.TransformPoint(new Vector3(entryNode.GridPosition.x * _cellSize, 1f, entryNode.GridPosition.y * _cellSize));
+            return transform.TransformPoint(new Vector3(entryNode.GridPosition.x * _cellSize, _roomAnchorHeight, entryNode.GridPosition.y * _cellSize));
         }
 
         /// <summary>
@@ -132,7 +134,7 @@ namespace EndlessRooms.World
                 return false;
             }
 
-            position = transform.TransformPoint(new Vector3(node.GridPosition.x * _cellSize, 1f, node.GridPosition.y * _cellSize));
+            position = transform.TransformPoint(new Vector3(node.GridPosition.x * _cellSize, _roomAnchorHeight, node.GridPosition.y * _cellSize));
             return true;
         }
 
@@ -292,7 +294,7 @@ namespace EndlessRooms.World
 
             foreach (RoomNode node in _lastGraph.Nodes)
             {
-                Vector3 worldPosition = transform.TransformPoint(new Vector3(node.GridPosition.x * _cellSize, 1f, node.GridPosition.y * _cellSize));
+                Vector3 worldPosition = transform.TransformPoint(new Vector3(node.GridPosition.x * _cellSize, _roomAnchorHeight, node.GridPosition.y * _cellSize));
                 Gizmos.color = GizmoColorFor(node.Definition != null ? node.Definition.Category : RoomCategory.Standard);
                 Gizmos.DrawSphere(worldPosition, 0.5f);
             }
@@ -305,8 +307,8 @@ namespace EndlessRooms.World
                     continue;
                 }
 
-                Vector3 fromWorld = transform.TransformPoint(new Vector3(from.GridPosition.x * _cellSize, 1f, from.GridPosition.y * _cellSize));
-                Vector3 toWorld = transform.TransformPoint(new Vector3(to.GridPosition.x * _cellSize, 1f, to.GridPosition.y * _cellSize));
+                Vector3 fromWorld = transform.TransformPoint(new Vector3(from.GridPosition.x * _cellSize, _roomAnchorHeight, from.GridPosition.y * _cellSize));
+                Vector3 toWorld = transform.TransformPoint(new Vector3(to.GridPosition.x * _cellSize, _roomAnchorHeight, to.GridPosition.y * _cellSize));
                 Gizmos.DrawLine(fromWorld, toWorld);
             }
         }
