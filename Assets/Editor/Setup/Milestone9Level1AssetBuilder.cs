@@ -31,6 +31,13 @@ namespace EndlessRooms.EditorSetup
         private const float WallThickness = 0.2f;
         private const float DoorWidth = 2f;
 
+        // Window.png blueprint: 2.00m x 1.20m window, 2.05m x 1.25m rough wall opening.
+        private const float WindowOpeningWidth = 2.05f;
+        private const float WindowOpeningHeight = 1.25f;
+        private const float WindowSillHeight = 0.9f;
+        private const float WindowWidth = 2.0f;
+        private const float WindowHeight = 1.2f;
+
         private const string ScenePath = "Assets/TheEndlessRooms/Scenes/Milestone9_Level1TestScene.unity";
         private const string InputActionsPath = "Assets/TheEndlessRooms/Settings/TheEndlessRooms.inputactions";
         private const string MovementConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/PlayerMovementConfig.asset";
@@ -62,6 +69,11 @@ namespace EndlessRooms.EditorSetup
         private const string WomenBathroomDoorTexturePath = "Assets/TheEndlessRooms/Art/Textures/Door_BathroomWomen_Level1.png";
         private const string MenBathroomDoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_BathroomMen_Level1.mat";
         private const string WomenBathroomDoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_BathroomWomen_Level1.mat";
+
+        private const string BathroomWallTexturePath = "Assets/TheEndlessRooms/Art/Textures/BathroomWall_Level1.png";
+        private const string BathroomFloorTexturePath = "Assets/TheEndlessRooms/Art/Textures/BathroomFloor_Level1.png";
+        private const string BathroomWallMaterialPath = "Assets/TheEndlessRooms/Art/Materials/BathroomWall_Level1.mat";
+        private const string BathroomFloorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/BathroomFloor_Level1.mat";
 
         private const string ThunderClipPath = "Assets/TheEndlessRooms/Audio/ThunderCrash_Level1.wav";
         private const string ScreamClipPath = "Assets/TheEndlessRooms/Audio/CaptureScream_Level1.wav";
@@ -152,6 +164,8 @@ namespace EndlessRooms.EditorSetup
             Material ceilingMaterial = CreateSimpleTexturedMaterial(CeilingTexturePath, CeilingMaterialPath, mirrorHorizontal: false);
             Material menBathroomDoorMaterial = CreateSimpleTexturedMaterial(MenBathroomDoorTexturePath, MenBathroomDoorMaterialPath, mirrorHorizontal: true);
             Material womenBathroomDoorMaterial = CreateSimpleTexturedMaterial(WomenBathroomDoorTexturePath, WomenBathroomDoorMaterialPath, mirrorHorizontal: true);
+            Material bathroomWallMaterial = CreateSimpleTexturedMaterial(BathroomWallTexturePath, BathroomWallMaterialPath, mirrorHorizontal: false);
+            Material bathroomFloorMaterial = CreateSimpleTexturedMaterial(BathroomFloorTexturePath, BathroomFloorMaterialPath, mirrorHorizontal: false);
 
             int wallCount = 0;
             int doorCount = 0;
@@ -166,9 +180,21 @@ namespace EndlessRooms.EditorSetup
                     continue;
                 }
 
-                if (wallMaterial != null && t.name.StartsWith("Wall_"))
+                // Walls/floors sit directly under their room GameObject (see
+                // BuildRoomShellWithDoor/BuildBathroom), so the immediate parent's name
+                // is enough to tell a bathroom's own surfaces from every other room's.
+                string parentName = t.parent != null ? t.parent.name : "";
+                bool isBathroom = parentName is "Bathroom_Men" or "Bathroom_Women";
+
+                if (t.name.StartsWith("Wall_"))
                 {
-                    renderer.sharedMaterial = wallMaterial;
+                    Material resolvedWallMaterial = isBathroom ? bathroomWallMaterial : wallMaterial;
+                    if (resolvedWallMaterial == null)
+                    {
+                        continue;
+                    }
+
+                    renderer.sharedMaterial = resolvedWallMaterial;
 
                     // A cube's UVs always span 0-1 per face regardless of localScale, so
                     // without this every wall segment — corridor end caps, 6m room walls,
@@ -181,7 +207,7 @@ namespace EndlessRooms.EditorSetup
                 }
                 else if (t.name == "DoorPanel")
                 {
-                    string hingeName = t.parent != null ? t.parent.name : "";
+                    string hingeName = parentName;
                     Material resolvedDoorMaterial = hingeName switch
                     {
                         "Bathroom_Men_Door" => menBathroomDoorMaterial,
@@ -198,10 +224,16 @@ namespace EndlessRooms.EditorSetup
                         doorCount++;
                     }
                 }
-                else if (carpetMaterial != null && (t.name == "Floor" || t.name.StartsWith("Floor_")))
+                else if (t.name == "Floor" || t.name.StartsWith("Floor_"))
                 {
-                    renderer.sharedMaterial = carpetMaterial;
-                    ApplyPerInstanceTiling(renderer, t.localScale, CarpetTextureMetersPerTile);
+                    Material resolvedFloorMaterial = isBathroom ? bathroomFloorMaterial : carpetMaterial;
+                    if (resolvedFloorMaterial == null)
+                    {
+                        continue;
+                    }
+
+                    renderer.sharedMaterial = resolvedFloorMaterial;
+                    ApplyPerInstanceTiling(renderer, t.localScale, isBathroom ? WallTextureMetersPerTile : CarpetTextureMetersPerTile);
                     floorCount++;
                 }
                 else if (ceilingMaterial != null && (t.name == "Ceiling" || t.name.StartsWith("Ceiling_")))
@@ -456,8 +488,9 @@ namespace EndlessRooms.EditorSetup
             roomGo.transform.SetParent(parent, false);
             roomGo.transform.position = center;
 
-            BuildRoomShellWithDoor(roomGo.transform, spec.Side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out Door door);
+            BuildRoomShellWithDoor(roomGo.transform, spec.Side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out Door door, includeWindow: true);
             BuildOfficeFurniture(roomGo.transform, spec);
+            BuildOfficeLight(roomGo.transform);
 
             if (spec.Id == "R11")
             {
@@ -467,6 +500,21 @@ namespace EndlessRooms.EditorSetup
 
         private static Door _pendingLockedDoor;
 
+        /// <summary>Offices had no light source at all — everything else in Level 1 (corridor, courtyards) does. A steady ceiling fixture, not the corridor's flickering warning kind, since these rooms are meant to be safely explorable.</summary>
+        private static void BuildOfficeLight(Transform room)
+        {
+            var lightGo = new GameObject("RoomLight");
+            lightGo.transform.SetParent(room, false);
+            lightGo.transform.localPosition = new Vector3(0f, WallHeight - 0.15f, 0f);
+            lightGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            var light = lightGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = 9f;
+            light.intensity = 1.1f;
+            light.color = new Color(0.95f, 0.93f, 0.85f);
+        }
+
         /// <summary>
         /// Floor, ceiling, back wall, two side walls, and a door-gap front wall (split
         /// into permanently-solid left/right pieces flanking a DoorWidth gap — same
@@ -475,15 +523,22 @@ namespace EndlessRooms.EditorSetup
         /// All positions are room-local (center of the room = origin) before LocalToWorld
         /// mirrors them for East-side rooms.
         /// </summary>
-        private static void BuildRoomShellWithDoor(Transform room, Side side, float depthX, float widthZ, out Door door)
+        private static void BuildRoomShellWithDoor(Transform room, Side side, float depthX, float widthZ, out Door door, bool includeWindow = false)
         {
             Vector3 roomCenter = room.position;
 
             CreateBlockWorld(room, "Floor", roomCenter, new Vector3(depthX, WallThickness, widthZ));
             CreateBlockWorld(room, "Ceiling", roomCenter + Vector3.up * WallHeight, new Vector3(depthX, WallThickness, widthZ));
 
-            Vector3 backWallLocal = new(-depthX / 2f, WallHeight / 2f, 0f);
-            CreateBlockWorld(room, "Wall_Back", Level1Layout.LocalToWorld(roomCenter, side, backWallLocal), new Vector3(WallThickness, WallHeight, widthZ));
+            if (includeWindow)
+            {
+                BuildBackWallWithWindow(room, roomCenter, side, depthX, widthZ);
+            }
+            else
+            {
+                Vector3 backWallLocal = new(-depthX / 2f, WallHeight / 2f, 0f);
+                CreateBlockWorld(room, "Wall_Back", Level1Layout.LocalToWorld(roomCenter, side, backWallLocal), new Vector3(WallThickness, WallHeight, widthZ));
+            }
 
             Vector3 sideWallLocalNear = new(0f, WallHeight / 2f, widthZ / 2f);
             Vector3 sideWallLocalFar = new(0f, WallHeight / 2f, -widthZ / 2f);
@@ -498,6 +553,85 @@ namespace EndlessRooms.EditorSetup
 
             Vector3 doorBoundaryWorld = Level1Layout.LocalToWorld(roomCenter, side, new Vector3(depthX / 2f, 0f, 0f));
             door = PlaceDoor(room, doorBoundaryWorld, $"{room.name}_Door");
+        }
+
+        /// <summary>
+        /// Splits the back wall (opposite the door) into four segments framing a window
+        /// opening centered on it — same "split wall" idea the door gap already uses,
+        /// just on all four sides of a hole instead of two.
+        /// </summary>
+        private static void BuildBackWallWithWindow(Transform room, Vector3 roomCenter, Side side, float depthX, float widthZ)
+        {
+            float backX = -depthX / 2f;
+            float sideWidth = (widthZ - WindowOpeningWidth) / 2f;
+            float sideOffset = sideWidth / 2f + WindowOpeningWidth / 2f;
+
+            CreateBlockWorld(room, "Wall_Back_Left", Level1Layout.LocalToWorld(roomCenter, side, new Vector3(backX, WallHeight / 2f, -sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
+            CreateBlockWorld(room, "Wall_Back_Right", Level1Layout.LocalToWorld(roomCenter, side, new Vector3(backX, WallHeight / 2f, sideOffset)), new Vector3(WallThickness, WallHeight, sideWidth));
+
+            float topOfOpening = WindowSillHeight + WindowOpeningHeight;
+            float aboveHeight = WallHeight - topOfOpening;
+            CreateBlockWorld(room, "Wall_Back_Below", Level1Layout.LocalToWorld(roomCenter, side, new Vector3(backX, WindowSillHeight / 2f, 0f)), new Vector3(WallThickness, WindowSillHeight, WindowOpeningWidth));
+            CreateBlockWorld(room, "Wall_Back_Above", Level1Layout.LocalToWorld(roomCenter, side, new Vector3(backX, topOfOpening + aboveHeight / 2f, 0f)), new Vector3(WallThickness, aboveHeight, WindowOpeningWidth));
+
+            Vector3 windowCenter = Level1Layout.LocalToWorld(roomCenter, side, new Vector3(backX, WindowSillHeight + WindowOpeningHeight / 2f, 0f));
+            BuildWindow(room, windowCenter);
+        }
+
+        /// <summary>Steel frame + tinted glass sitting in the back-wall opening — nothing exists beyond that wall, so the glass looks straight out at the new night skybox (stars/moon), which is the point.</summary>
+        private static void BuildWindow(Transform room, Vector3 worldCenter)
+        {
+            var windowGo = new GameObject("Window");
+            windowGo.transform.SetParent(room, true);
+            windowGo.transform.position = worldCenter;
+
+            var frame = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            frame.name = "Frame";
+            frame.transform.SetParent(windowGo.transform, false);
+            frame.transform.position = worldCenter;
+            frame.transform.localScale = new Vector3(0.08f, WindowHeight, WindowWidth);
+            frame.GetComponent<Renderer>().sharedMaterial = GetOrCreateWindowFrameMaterial();
+
+            var glass = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            glass.name = "Glass";
+            glass.transform.SetParent(windowGo.transform, false);
+            glass.transform.position = worldCenter;
+            glass.transform.localScale = new Vector3(0.02f, WindowHeight - 0.15f, WindowWidth - 0.15f);
+            glass.GetComponent<Renderer>().sharedMaterial = GetOrCreateWindowGlassMaterial();
+
+            var blinds = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            blinds.name = "Blinds";
+            blinds.transform.SetParent(windowGo.transform, false);
+            blinds.transform.position = worldCenter + new Vector3(0f, WindowHeight / 2f - 0.14f, 0f);
+            blinds.transform.localScale = new Vector3(0.03f, 0.16f, WindowWidth - 0.2f);
+            Object.DestroyImmediate(blinds.GetComponent<Collider>());
+            blinds.GetComponent<Renderer>().sharedMaterial = GetOrCreateWindowFrameMaterial();
+        }
+
+        private static Material GetOrCreateWindowFrameMaterial()
+        {
+            const string path = "Assets/TheEndlessRooms/Art/Materials/WindowFrame_Level1.mat";
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = new Color(0.09f, 0.09f, 0.1f),
+            };
+            material.SetFloat("_Smoothness", 0.4f);
+            material.SetFloat("_Metallic", 0.3f);
+
+            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        private static Material GetOrCreateWindowGlassMaterial()
+        {
+            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.3f));
         }
 
         /// <summary>
@@ -546,19 +680,27 @@ namespace EndlessRooms.EditorSetup
 
             if (spec.UseMeetingTable)
             {
-                // Centered in the room (not against a wall) with its 2.4m length along
-                // the room's depth axis, chairs lined up along both long sides.
+                // Centered in the room (not against a wall), rotated 90 degrees from the
+                // first pass so its 2.4m length runs along room Z (the 6m-wide axis)
+                // instead of room X (the 5m-deep, door-to-back-wall walking axis) —
+                // leaves much more clearance to walk around it front-to-back.
                 Vector3 tablePos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(0f, floorY, 0f));
-                Level1FurnitureBuilder.BuildMeetingTable(room, "MeetingTable", tablePos, Quaternion.LookRotation(intoRoomFromBackWall));
+                Level1FurnitureBuilder.BuildMeetingTable(room, "MeetingTable", tablePos, Quaternion.LookRotation(Vector3.forward));
+
+                // Local +X and -X directions, mirrored per Side the same way position
+                // offsets are — hardcoding Vector3.left/right here would face every chair
+                // the wrong way in East-side rooms, where X is flipped.
+                Quaternion facePositiveLocalXSide = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, spec.Side, Vector3.left));
+                Quaternion faceNegativeLocalXSide = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, spec.Side, Vector3.right));
 
                 float[] chairOffsets = { -0.8f, 0f, 0.8f };
                 foreach (float offset in chairOffsets)
                 {
-                    Vector3 nearSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(offset, floorY, 0.87f));
-                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", nearSideChairPos, Quaternion.LookRotation(Vector3.back));
+                    Vector3 nearSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(0.87f, floorY, offset));
+                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", nearSideChairPos, facePositiveLocalXSide);
 
-                    Vector3 farSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(offset, floorY, -0.87f));
-                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", farSideChairPos, Quaternion.LookRotation(Vector3.forward));
+                    Vector3 farSideChairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-0.87f, floorY, offset));
+                    Level1FurnitureBuilder.BuildChair(room, "MeetingChair", farSideChairPos, faceNegativeLocalXSide);
                 }
             }
             else
@@ -680,27 +822,26 @@ namespace EndlessRooms.EditorSetup
 
         private static Material GetOrCreateRainMaterial()
         {
-            const string path = "Assets/TheEndlessRooms/Art/Materials/Rain_Level1.mat";
+            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/Rain_Level1.mat", new Color(0.55f, 0.7f, 0.95f, 0.55f));
+        }
+
+        /// <summary>The plain Unlit shader (not a particle/glass-specific variant) — already used successfully elsewhere in this project (walls/doors), so its property names are known-good rather than guessed.</summary>
+        private static Material GetOrCreateUnlitTransparentMaterial(string path, Color color)
+        {
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null)
             {
                 return existing;
             }
 
-            // The plain Unlit shader (not a particle-specific variant) — already used
-            // successfully elsewhere in this project (walls/doors), so its property
-            // names are known-good rather than guessed.
-            var material = new Material(Shader.Find("Universal Render Pipeline/Unlit"))
-            {
-                color = new Color(0.55f, 0.7f, 0.95f, 0.55f),
-            };
+            var material = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = color };
             material.SetFloat("_Surface", 1f); // Transparent
             material.SetFloat("_Blend", 0f); // Alpha blend
             material.SetOverrideTag("RenderType", "Transparent");
-            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
             material.SetInt("_ZWrite", 0);
-            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            material.renderQueue = (int)RenderQueue.Transparent;
             material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
 
             EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
