@@ -49,6 +49,11 @@ namespace EndlessRooms.EditorSetup
         private const string DoorMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Door_Level1.mat";
         private const float WallTextureMetersPerTile = 2f; // WallAlbedo_Level1.png is a tileable ~2m x 2m square texture
 
+        private const string ThunderClipPath = "Assets/TheEndlessRooms/Audio/ThunderCrash_Level1.wav";
+        private const string ScreamClipPath = "Assets/TheEndlessRooms/Audio/CaptureScream_Level1.wav";
+        private const string HeartbeatClipPath = "Assets/TheEndlessRooms/Audio/CaptureHeartbeat_Level1.wav";
+        private const string HeartbeatVignetteTexturePathPrefix = "Assets/TheEndlessRooms/Art/Textures/HeartbeatVignette";
+
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
         {
@@ -102,6 +107,7 @@ namespace EndlessRooms.EditorSetup
             BuildInteractionPromptUi(interactionCaster);
             BuildLevelCompleteUi();
             BuildGameOverUi();
+            BuildHeartbeatVignetteUi();
 
             ApplyLevel1Materials(levelRoot);
 
@@ -693,6 +699,7 @@ namespace EndlessRooms.EditorSetup
             so.FindProperty("_warningAudioSource").objectReferenceValue = audioSource;
             so.FindProperty("_lightningFlash").objectReferenceValue = lightningFlash;
             so.FindProperty("_thunderAudioSource").objectReferenceValue = thunderAudioSource;
+            so.FindProperty("_thunderSound").objectReferenceValue = AssetDatabase.LoadAssetAtPath<AudioClip>(ThunderClipPath);
 
             SerializedProperty lightsProp = so.FindProperty("_warningLights");
             lightsProp.arraySize = warningLights.Length;
@@ -1041,7 +1048,65 @@ namespace EndlessRooms.EditorSetup
             var gameOverUi = canvasGo.AddComponent<GameOverController>();
             var so2 = new SerializedObject(gameOverUi);
             so2.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
+            // 2.5s (not the 2s default) so the heartbeat vignette (5 beats at 2/sec) has
+            // time to finish playing before the scene reloads out from under it.
+            so2.FindProperty("_reloadDelaySeconds").floatValue = 2.5f;
             so2.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// The player's own scared reaction to being caught: a full-screen vignette
+        /// (sorting order below GameOverCanvas's 100, so "You Were Caught" still reads
+        /// on top of it) cycling through 3 user-provided frames, plus a scream + fast
+        /// heartbeat one-shot. See HeartbeatVignetteController for the timing.
+        /// </summary>
+        private static void BuildHeartbeatVignetteUi()
+        {
+            var canvasGo = new GameObject("HeartbeatVignetteCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 90;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var imageGo = new GameObject("VignetteImage", typeof(RectTransform), typeof(Image));
+            imageGo.transform.SetParent(canvasGo.transform, false);
+            var imageRect = imageGo.GetComponent<RectTransform>();
+            imageRect.anchorMin = Vector2.zero;
+            imageRect.anchorMax = Vector2.one;
+            imageRect.sizeDelta = Vector2.zero;
+            var image = imageGo.GetComponent<Image>();
+            image.preserveAspect = false;
+            imageGo.SetActive(false);
+
+            var sprites = new Sprite[3];
+            for (int i = 0; i < 3; i++)
+            {
+                sprites[i] = EditorSpriteImportUtility.LoadOrImportSprite($"{HeartbeatVignetteTexturePathPrefix}{i + 1}_Level1.png", 100f, SpriteAlignment.Center);
+            }
+
+            var screamAudioSource = canvasGo.AddComponent<AudioSource>();
+            screamAudioSource.spatialBlend = 0f;
+            var heartbeatAudioSource = canvasGo.AddComponent<AudioSource>();
+            heartbeatAudioSource.spatialBlend = 0f;
+
+            var vignette = canvasGo.AddComponent<HeartbeatVignetteController>();
+            var so = new SerializedObject(vignette);
+            so.FindProperty("_vignetteRoot").objectReferenceValue = imageGo;
+            so.FindProperty("_vignetteImage").objectReferenceValue = image;
+            so.FindProperty("_screamAudioSource").objectReferenceValue = screamAudioSource;
+            so.FindProperty("_screamSound").objectReferenceValue = AssetDatabase.LoadAssetAtPath<AudioClip>(ScreamClipPath);
+            so.FindProperty("_heartbeatAudioSource").objectReferenceValue = heartbeatAudioSource;
+            so.FindProperty("_heartbeatSound").objectReferenceValue = AssetDatabase.LoadAssetAtPath<AudioClip>(HeartbeatClipPath);
+
+            SerializedProperty framesProp = so.FindProperty("_frames");
+            framesProp.arraySize = sprites.Length;
+            for (int i = 0; i < sprites.Length; i++)
+            {
+                framesProp.GetArrayElementAtIndex(i).objectReferenceValue = sprites[i];
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- shared helpers
