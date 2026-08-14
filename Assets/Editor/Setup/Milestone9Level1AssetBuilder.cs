@@ -111,8 +111,12 @@ namespace EndlessRooms.EditorSetup
         /// </summary>
         private static void ApplyLevel1Materials(Transform levelRoot)
         {
-            Material wallMaterial = CreateSimpleTexturedMaterial(WallTexturePath, WallMaterialPath);
-            Material doorMaterial = CreateSimpleTexturedMaterial(DoorTexturePath, DoorMaterialPath);
+            Material wallMaterial = CreateSimpleTexturedMaterial(WallTexturePath, WallMaterialPath, mirrorHorizontal: false);
+            // Door_Level1.png is 1024x1536 (2:3), exactly matching the door panel's
+            // 2m x 3m face, so it already maps with zero stretching — mirrored
+            // horizontally here so the handle reads on the opposite side from the
+            // source art.
+            Material doorMaterial = CreateSimpleTexturedMaterial(DoorTexturePath, DoorMaterialPath, mirrorHorizontal: true);
 
             int wallCount = 0;
             int doorCount = 0;
@@ -154,7 +158,7 @@ namespace EndlessRooms.EditorSetup
         }
 
         /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
-        private static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath)
+        private static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath, bool mirrorHorizontal)
         {
             var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (albedo == null)
@@ -168,6 +172,10 @@ namespace EndlessRooms.EditorSetup
             var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             material.SetTexture("_BaseMap", albedo);
             material.SetFloat("_Smoothness", 0.25f);
+            // Negative X scale flips the U axis; wall tiling gets overwritten per-wall
+            // right after this call anyway, so this default only actually matters for
+            // the (non-tiled) door material.
+            material.mainTextureScale = mirrorHorizontal ? new Vector2(-1f, 1f) : Vector2.one;
 
             if (AssetDatabase.LoadAssetAtPath<Material>(materialPath) != null)
             {
