@@ -626,7 +626,9 @@ namespace EndlessRooms.EditorSetup
         /// </summary>
         private static void BuildAttendantBillboard(Transform attendantTransform)
         {
-            Sprite sprite = LoadOrImportAttendantSprite();
+            // BottomCenter alignment so the billboard's transform.position is at the
+            // creature's feet, matching the CharacterController's ground-level pivot.
+            Sprite sprite = EditorSpriteImportUtility.LoadOrImportSprite(AttendantSpritePath, AttendantSpritePixelsPerUnit, SpriteAlignment.BottomCenter);
             if (sprite == null)
             {
                 return;
@@ -639,33 +641,6 @@ namespace EndlessRooms.EditorSetup
             var spriteRenderer = billboardGo.AddComponent<SpriteRenderer>();
             spriteRenderer.sprite = sprite;
             billboardGo.AddComponent<BillboardSprite>();
-        }
-
-        private static Sprite LoadOrImportAttendantSprite()
-        {
-            var importer = AssetImporter.GetAtPath(AttendantSpritePath) as TextureImporter;
-            if (importer == null)
-            {
-                return null;
-            }
-
-            if (importer.textureType != TextureImporterType.Sprite)
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spriteImportMode = SpriteImportMode.Single;
-                importer.alphaIsTransparency = true;
-                importer.mipmapEnabled = false;
-                importer.spritePixelsPerUnit = AttendantSpritePixelsPerUnit;
-
-                var settings = new TextureImporterSettings();
-                importer.ReadTextureSettings(settings);
-                settings.spriteAlignment = (int)SpriteAlignment.BottomCenter; // so the billboard's transform.position is at the creature's feet, matching the CharacterController's ground-level pivot
-                importer.SetTextureSettings(settings);
-
-                importer.SaveAndReimport();
-            }
-
-            return AssetDatabase.LoadAssetAtPath<Sprite>(AttendantSpritePath);
         }
 
         private static void BuildInteractionPromptUi(InteractionCaster interactionCaster)

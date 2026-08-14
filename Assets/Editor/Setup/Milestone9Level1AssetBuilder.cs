@@ -34,6 +34,8 @@ namespace EndlessRooms.EditorSetup
         private const string InputActionsPath = "Assets/TheEndlessRooms/Settings/TheEndlessRooms.inputactions";
         private const string MovementConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/PlayerMovementConfig.asset";
         private const string ItemsFolder = "Assets/TheEndlessRooms/ScriptableObjects/Items";
+        private const string JumpScareSpritePath = "Assets/TheEndlessRooms/Art/Textures/JumpScareMonster.png";
+        private const float JumpScareSpritePixelsPerUnit = 700f;
 
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
@@ -555,12 +557,18 @@ namespace EndlessRooms.EditorSetup
             collider.size = new Vector3(Level1Layout.RoomDepthX, WallHeight, Level1Layout.RoomWidthZ);
             triggerGo.AddComponent<AudioSource>();
 
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            visual.name = "ScareVisual";
+            var visual = new GameObject("ScareVisual");
             visual.transform.SetParent(triggerGo.transform, false);
-            visual.transform.localPosition = new Vector3(1.5f, 1f, 0f);
-            Object.DestroyImmediate(visual.GetComponent<Collider>());
-            DebugColor.Apply(visual, DebugColor.Attendant);
+            visual.transform.localPosition = new Vector3(1.5f, 0f, 0f);
+
+            // BottomCenter alignment so this transform sits at the figure's feet (floor level).
+            Sprite sprite = EditorSpriteImportUtility.LoadOrImportSprite(JumpScareSpritePath, JumpScareSpritePixelsPerUnit, SpriteAlignment.BottomCenter);
+            if (sprite != null)
+            {
+                var spriteRenderer = visual.AddComponent<SpriteRenderer>();
+                spriteRenderer.sprite = sprite;
+                visual.AddComponent<BillboardSprite>();
+            }
 
             var jumpScare = triggerGo.AddComponent<JumpScareTrigger>();
             var so = new SerializedObject(jumpScare);
