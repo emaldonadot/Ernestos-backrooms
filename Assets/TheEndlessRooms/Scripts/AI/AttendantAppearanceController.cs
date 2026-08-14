@@ -1,3 +1,4 @@
+using EndlessRooms.Core;
 using EndlessRooms.World;
 using UnityEngine;
 
@@ -25,7 +26,7 @@ namespace EndlessRooms.AI
         [SerializeField] private float _huntDurationSeconds = 25f;
 
         [Header("Warning cues")]
-        [Tooltip("Disabled by default (steady, normal light) and enabled only during the Warning phase, then disabled again — not the same as an always-on ambient flicker.")]
+        [Tooltip("These flicker gently all the time as ambient atmosphere (see FlickeringLight's own baseline); this controller intensifies that flicker during the Warning and Hunting phases only.")]
         [SerializeField] private FlickeringLight[] _warningLights = System.Array.Empty<FlickeringLight>();
         [SerializeField] private AudioSource _warningAudioSource;
         [SerializeField] private AudioClip _warningSound;
@@ -41,7 +42,13 @@ namespace EndlessRooms.AI
 
         private void OnEnable()
         {
+            GameEvents.PlayerCaptured += ForceIdle;
             ApplyPhase(_state.Phase, forceReapply: true);
+        }
+
+        private void OnDisable()
+        {
+            GameEvents.PlayerCaptured -= ForceIdle;
         }
 
         private void Update()
@@ -52,7 +59,7 @@ namespace EndlessRooms.AI
             }
         }
 
-        /// <summary>Called when the player is captured — ends the current hunt immediately rather than waiting out its timer, since the attempt is already over.</summary>
+        /// <summary>Wired to <see cref="GameEvents.PlayerCaptured"/> above — ends the current hunt immediately rather than waiting out its timer, since the attempt is already over.</summary>
         public void ForceIdle()
         {
             _state.ForceIdle();
@@ -73,10 +80,10 @@ namespace EndlessRooms.AI
             {
                 case AttendantAppearancePhase.Idle:
                     SetAttendantActive(false);
-                    SetLightsFlickering(false);
+                    SetLightsIntensified(false);
                     break;
                 case AttendantAppearancePhase.Warning:
-                    SetLightsFlickering(true);
+                    SetLightsIntensified(true);
                     if (_warningAudioSource != null && _warningSound != null)
                     {
                         _warningAudioSource.PlayOneShot(_warningSound);
@@ -84,7 +91,7 @@ namespace EndlessRooms.AI
 
                     break;
                 case AttendantAppearancePhase.Hunting:
-                    SetLightsFlickering(false);
+                    SetLightsIntensified(true);
                     SetAttendantActive(true);
                     break;
             }
@@ -103,13 +110,13 @@ namespace EndlessRooms.AI
             }
         }
 
-        private void SetLightsFlickering(bool flickering)
+        private void SetLightsIntensified(bool intensified)
         {
             foreach (FlickeringLight light in _warningLights)
             {
                 if (light != null)
                 {
-                    light.enabled = flickering;
+                    light.SetIntensified(intensified);
                 }
             }
         }

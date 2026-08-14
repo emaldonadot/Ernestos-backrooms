@@ -312,9 +312,11 @@ namespace EndlessRooms.EditorSetup
                 light.intensity = 1.3f;
                 light.color = new Color(0.85f, 0.9f, 1f);
 
-                var flicker = lightGo.AddComponent<FlickeringLight>();
-                flicker.enabled = false;
-                lights[row - 1] = flicker;
+                // Always enabled: FlickeringLight itself flickers gently as ambient
+                // baseline atmosphere all the time now, and AttendantAppearanceController
+                // only intensifies (not toggles) it during Warning/Hunting via SetIntensified.
+                lightGo.AddComponent<FlickeringLight>();
+                lights[row - 1] = lightGo.GetComponent<FlickeringLight>();
             }
 
             return lights;
@@ -647,6 +649,8 @@ namespace EndlessRooms.EditorSetup
             var canvasGo = new GameObject("GameOverCanvas");
             var canvas = canvasGo.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 100; // always above PromptCanvas/LevelCompleteCanvas regardless of hierarchy order
             canvasGo.AddComponent<CanvasScaler>();
 
             var panelRoot = new GameObject("Panel", typeof(RectTransform), typeof(Image));
