@@ -8,6 +8,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 using Side = EndlessRooms.World.Level1Layout.Side;
 using OfficeSpec = EndlessRooms.World.Level1Layout.OfficeSpec;
@@ -93,6 +94,7 @@ namespace EndlessRooms.EditorSetup
             BuildGameOverUi();
 
             ApplyLevel1Materials(levelRoot);
+            BuildNightAmbiance();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
@@ -155,6 +157,49 @@ namespace EndlessRooms.EditorSetup
             }
 
             Debug.Log($"[Milestone9Level1AssetBuilder] Applied wall/door materials to {wallCount} wall segments and {doorCount} door panels.");
+        }
+
+        /// <summary>
+        /// The scene had never had its lighting touched — still Unity's stock
+        /// NewSceneSetup.DefaultGameObjects daytime Directional Light plus the default
+        /// bright procedural Skybox, both plainly visible (and lighting the whole
+        /// building) through the two open-air courtyards. Retunes the existing
+        /// Directional Light into dim moonlight, swaps in a dark night skybox, and
+        /// switches ambient lighting from skybox-derived to a fixed dark flat color so
+        /// the baseline mood doesn't depend on skybox exposure quirks.
+        /// </summary>
+        private static void BuildNightAmbiance()
+        {
+            GameObject sunGo = GameObject.Find("Directional Light");
+            if (sunGo != null)
+            {
+                var sunLight = sunGo.GetComponent<Light>();
+                if (sunLight != null)
+                {
+                    sunLight.intensity = 0.12f;
+                    sunLight.color = new Color(0.55f, 0.62f, 0.78f);
+                }
+            }
+
+            var skybox = new Material(Shader.Find("Skybox/Procedural"));
+            skybox.SetFloat("_Exposure", 0.15f);
+            skybox.SetFloat("_AtmosphereThickness", 0.6f);
+            skybox.SetFloat("_SunSize", 0.02f);
+            skybox.SetColor("_SkyTint", new Color(0.03f, 0.04f, 0.08f));
+            skybox.SetColor("_GroundColor", new Color(0.01f, 0.01f, 0.02f));
+
+            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+            const string skyboxPath = "Assets/TheEndlessRooms/Art/Materials/NightSky_Level1.mat";
+            if (AssetDatabase.LoadAssetAtPath<Material>(skyboxPath) != null)
+            {
+                AssetDatabase.DeleteAsset(skyboxPath);
+            }
+
+            AssetDatabase.CreateAsset(skybox, skyboxPath);
+
+            RenderSettings.skybox = skybox;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.035f, 0.035f, 0.05f);
         }
 
         /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
@@ -432,14 +477,21 @@ namespace EndlessRooms.EditorSetup
                 var light = lightGo.AddComponent<Light>();
                 light.type = LightType.Point;
                 light.range = 8f;
-                light.intensity = 1.3f;
                 light.color = new Color(0.85f, 0.9f, 1f);
 
                 // Always enabled: FlickeringLight itself flickers gently as ambient
                 // baseline atmosphere all the time now, and AttendantAppearanceController
                 // only intensifies (not toggles) it during Warning/Hunting via SetIntensified.
-                lightGo.AddComponent<FlickeringLight>();
-                lights[row - 1] = lightGo.GetComponent<FlickeringLight>();
+                var flicker = lightGo.AddComponent<FlickeringLight>();
+                // FlickeringLight.Update() drives Light.intensity every frame starting
+                // from its own _baseIntensity field, not whatever Light.intensity was set
+                // to above — has to be wired here directly, or the light stays at
+                // FlickeringLight's serialized default (1) regardless of this dimmer,
+                // darker-corridor target.
+                var flickerSo = new SerializedObject(flicker);
+                flickerSo.FindProperty("_baseIntensity").floatValue = 0.6f;
+                flickerSo.ApplyModifiedPropertiesWithoutUndo();
+                lights[row - 1] = flicker;
             }
 
             return lights;
@@ -617,7 +669,9 @@ namespace EndlessRooms.EditorSetup
             EditorUtility.SetDirty(masterKey);
             AssetDatabase.SaveAssets();
 
-            Vector3 keyPosition = r01.transform.position + new Vector3(-1.7f, 0.9f, 0f);
+            // Rests on the R01 desk's actual desktop surface (Level1FurnitureBuilder.BuildDesk:
+            // floorY 0.1 + deskHeight 0.75 = 0.85, plus half the key's own thickness).
+            Vector3 keyPosition = r01.transform.position + new Vector3(-1.7f, 0.86f, 0f);
             var keyGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             keyGo.name = "MasterKeyPickup";
             keyGo.transform.position = keyPosition;
@@ -630,7 +684,7 @@ namespace EndlessRooms.EditorSetup
 
             var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             clueGo.name = "ClueNote_R01";
-            clueGo.transform.position = r01.transform.position + new Vector3(-1.7f, 0.78f, -0.35f);
+            clueGo.transform.position = r01.transform.position + new Vector3(-1.7f, 0.865f, -0.35f);
             clueGo.transform.localScale = new Vector3(0.22f, 0.03f, 0.28f);
             DebugColor.Apply(clueGo, DebugColor.Note);
             var note = clueGo.AddComponent<FieldNote>();
