@@ -80,6 +80,12 @@ namespace EndlessRooms.EditorSetup
         private const string HeartbeatClipPath = "Assets/TheEndlessRooms/Audio/CaptureHeartbeat_Level1.wav";
         private const string HeartbeatVignetteTexturePathPrefix = "Assets/TheEndlessRooms/Art/Textures/HeartbeatVignette";
 
+        private const string CassetteMessageText =
+            "(A woman's voice, half-buried in tape hiss)\n\n" +
+            "\"...if anyone finds this — don't trust the roster. Whoever's " +
+            "signing the maintenance logs isn't on it. Check R11 before you " +
+            "check anywhere else.\"";
+
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
         {
@@ -115,8 +121,9 @@ namespace EndlessRooms.EditorSetup
             FlickeringLight[] warningLights = BuildCorridorWarningLights(levelRoot);
 
             ActionRefs actionRefs = LoadInputActionReferences();
+            CollectibleItems items = LoadOrCreateCollectibleItems();
             var movementConfig = AssetDatabase.LoadAssetAtPath<PlayerMovementConfig>(MovementConfigPath);
-            GameObject playerGo = BuildPlayer(movementConfig, actionRefs, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake);
+            GameObject playerGo = BuildPlayer(movementConfig, actionRefs, items, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake, out Inventory inventory, out InventorySelectionController selectionController);
             playerGo.transform.position = new Vector3(0f, 1f, 1.5f);
             _ = cameraShake;
 
@@ -129,11 +136,15 @@ namespace EndlessRooms.EditorSetup
             BuildExitPoint();
             BuildFirstKeyLockChain(playerGo.transform);
             BuildJumpScares();
+            BuildCollectibleItems(items);
+            BuildUvRevealedBathroomClue();
 
             BuildInteractionPromptUi(interactionCaster);
             BuildLevelCompleteUi();
             BuildGameOverUi();
             BuildHeartbeatVignetteUi();
+            BuildFieldNoteUi(actionRefs.Interact);
+            BuildInventoryHudUi(inventory, selectionController);
 
             ApplyLevel1Materials(levelRoot);
 
@@ -185,10 +196,16 @@ namespace EndlessRooms.EditorSetup
                 // is enough to tell a bathroom's own surfaces from every other room's.
                 string parentName = t.parent != null ? t.parent.name : "";
                 bool isBathroom = parentName is "Bathroom_Men" or "Bathroom_Women";
+                // Only the walls fully inside the bathroom (back + both sides) get the
+                // tile look — the door-flanking wall stays the regular office material
+                // so the transition from corridor to bathroom entrance reads as
+                // continuous with the rest of the building, not a hard style cut right
+                // at the doorway.
+                bool isBathroomInteriorWall = isBathroom && t.name is "Wall_Back" or "Wall_SideA" or "Wall_SideB";
 
                 if (t.name.StartsWith("Wall_"))
                 {
-                    Material resolvedWallMaterial = isBathroom ? bathroomWallMaterial : wallMaterial;
+                    Material resolvedWallMaterial = isBathroomInteriorWall ? bathroomWallMaterial : wallMaterial;
                     if (resolvedWallMaterial == null)
                     {
                         continue;
@@ -490,7 +507,7 @@ namespace EndlessRooms.EditorSetup
 
             BuildRoomShellWithDoor(roomGo.transform, spec.Side, Level1Layout.RoomDepthX, Level1Layout.RoomWidthZ, out Door door, includeWindow: true);
             BuildOfficeFurniture(roomGo.transform, spec);
-            BuildOfficeLight(roomGo.transform);
+            BuildRoomLight(roomGo.transform);
 
             if (spec.Id == "R11")
             {
@@ -500,8 +517,8 @@ namespace EndlessRooms.EditorSetup
 
         private static Door _pendingLockedDoor;
 
-        /// <summary>Offices had no light source at all — everything else in Level 1 (corridor, courtyards) does. A steady ceiling fixture, not the corridor's flickering warning kind, since these rooms are meant to be safely explorable.</summary>
-        private static void BuildOfficeLight(Transform room)
+        /// <summary>Offices and bathrooms had no light source at all — everything else in Level 1 (corridor, courtyards) does. A steady ceiling fixture, not the corridor's flickering warning kind, since these rooms are meant to be safely explorable.</summary>
+        private static void BuildRoomLight(Transform room)
         {
             var lightGo = new GameObject("RoomLight");
             lightGo.transform.SetParent(room, false);
@@ -750,6 +767,8 @@ namespace EndlessRooms.EditorSetup
 
             Vector3 sinkPos = Level1Layout.LocalToWorld(center, side, new Vector3(-1.85f, floorY, 2.0f));
             Level1FurnitureBuilder.BuildSink(roomGo.transform, "Sink", sinkPos, Quaternion.LookRotation(intoRoomFromBackWall));
+
+            BuildRoomLight(roomGo.transform);
         }
 
         // ---------------------------------------------------------------- courtyards
@@ -977,6 +996,9 @@ namespace EndlessRooms.EditorSetup
             public InputActionReference Sprint;
             public InputActionReference Crouch;
             public InputActionReference Interact;
+            public InputActionReference CycleInventoryNext;
+            public InputActionReference CycleInventoryPrevious;
+            public InputActionReference UseItem;
         }
 
         private static ActionRefs LoadInputActionReferences()
@@ -1001,10 +1023,57 @@ namespace EndlessRooms.EditorSetup
                 Sprint = Find("Sprint"),
                 Crouch = Find("Crouch"),
                 Interact = Find("Interact"),
+                CycleInventoryNext = Find("CycleInventoryNext"),
+                CycleInventoryPrevious = Find("CycleInventoryPrevious"),
+                UseItem = Find("UseItem"),
             };
         }
 
-        private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake)
+        private struct CollectibleItems
+        {
+            public InventoryItemDefinition Battery;
+            public InventoryItemDefinition Cassette;
+            public InventoryItemDefinition CassetteRecorder;
+            public InventoryItemDefinition UvFlashlight;
+            public InventoryItemDefinition Flashlight;
+            public InventoryItemDefinition GoldenKey;
+            public InventoryItemDefinition BronzeKey;
+        }
+
+        private static CollectibleItems LoadOrCreateCollectibleItems()
+        {
+            EnsureFolder(ItemsFolder);
+
+            InventoryItemDefinition Create(string fileName, string itemId, string displayName, string description)
+            {
+                string path = $"{ItemsFolder}/{fileName}.asset";
+                var existing = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(path);
+                if (existing != null)
+                {
+                    return existing;
+                }
+
+                var item = ScriptableObject.CreateInstance<InventoryItemDefinition>();
+                item.ItemId = itemId;
+                item.DisplayName = displayName;
+                item.Description = description;
+                AssetDatabase.CreateAsset(item, path);
+                return item;
+            }
+
+            return new CollectibleItems
+            {
+                Battery = Create("Battery", "battery", "D Battery", "A worn D-cell battery. Powers small electronics."),
+                Cassette = Create("Cassette", "cassette", "Audio Cassette", "A labeled cassette tape. Needs a player."),
+                CassetteRecorder = Create("CassetteRecorder", "cassette_recorder", "Cassette Recorder", "A portable cassette recorder. Needs a tape."),
+                UvFlashlight = Create("UvFlashlight", "uv_flashlight", "UV Flashlight", "Reveals markings invisible under normal light. Needs batteries."),
+                Flashlight = Create("Flashlight", "flashlight", "Flashlight", "A dependable flashlight."),
+                GoldenKey = Create("GoldenKey", "golden_key", "Golden Key", "An ornate golden key."),
+                BronzeKey = Create("BronzeKey", "bronze_key", "Bronze Key", "A plain bronze key."),
+            };
+        }
+
+        private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, CollectibleItems items, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake, out Inventory inventory, out InventorySelectionController selectionController)
         {
             var playerGo = new GameObject("Player") { tag = "Player" };
 
@@ -1052,9 +1121,70 @@ namespace EndlessRooms.EditorSetup
             casterSo.FindProperty("_interactAction").objectReferenceValue = actionRefs.Interact;
             casterSo.ApplyModifiedPropertiesWithoutUndo();
 
-            playerGo.AddComponent<Inventory>();
+            inventory = playerGo.AddComponent<Inventory>();
+            var inventorySo = new SerializedObject(inventory);
+            SerializedProperty catalogProp = inventorySo.FindProperty("_itemCatalog");
+            var catalogItems = new[] { items.Battery, items.Cassette, items.CassetteRecorder, items.UvFlashlight, items.Flashlight, items.GoldenKey, items.BronzeKey };
+            catalogProp.arraySize = catalogItems.Length;
+            for (int i = 0; i < catalogItems.Length; i++)
+            {
+                catalogProp.GetArrayElementAtIndex(i).objectReferenceValue = catalogItems[i];
+            }
+
+            inventorySo.ApplyModifiedPropertiesWithoutUndo();
+
+            selectionController = playerGo.AddComponent<InventorySelectionController>();
+            var selectionSo = new SerializedObject(selectionController);
+            selectionSo.FindProperty("_inventory").objectReferenceValue = inventory;
+            selectionSo.FindProperty("_cycleNextAction").objectReferenceValue = actionRefs.CycleInventoryNext;
+            selectionSo.FindProperty("_cyclePreviousAction").objectReferenceValue = actionRefs.CycleInventoryPrevious;
+            selectionSo.FindProperty("_useItemAction").objectReferenceValue = actionRefs.UseItem;
+            selectionSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // Both beams live on the camera so they always point wherever the player is
+            // looking, same as a handheld light would.
+            Light flashlightBeam = BuildHandheldBeam(cameraGo.transform, "FlashlightBeam", new Color(1f, 0.97f, 0.85f), 12f, 45f);
+            Light uvBeam = BuildHandheldBeam(cameraGo.transform, "UvBeam", new Color(0.55f, 0.15f, 0.95f), 8f, 35f);
+
+            var flashlight = playerGo.AddComponent<PlayerFlashlight>();
+            var flashlightSo = new SerializedObject(flashlight);
+            flashlightSo.FindProperty("_flashlightItem").objectReferenceValue = items.Flashlight;
+            flashlightSo.FindProperty("_inventory").objectReferenceValue = inventory;
+            flashlightSo.FindProperty("_beam").objectReferenceValue = flashlightBeam;
+            flashlightSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var uvFlashlight = playerGo.AddComponent<PlayerUvFlashlight>();
+            var uvFlashlightSo = new SerializedObject(uvFlashlight);
+            uvFlashlightSo.FindProperty("_uvFlashlightItem").objectReferenceValue = items.UvFlashlight;
+            uvFlashlightSo.FindProperty("_batteryItem").objectReferenceValue = items.Battery;
+            uvFlashlightSo.FindProperty("_inventory").objectReferenceValue = inventory;
+            uvFlashlightSo.FindProperty("_beam").objectReferenceValue = uvBeam;
+            uvFlashlightSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var cassettePlayer = playerGo.AddComponent<CassetteMessagePlayer>();
+            var cassettePlayerSo = new SerializedObject(cassettePlayer);
+            cassettePlayerSo.FindProperty("_cassetteItem").objectReferenceValue = items.Cassette;
+            cassettePlayerSo.FindProperty("_recorderItem").objectReferenceValue = items.CassetteRecorder;
+            cassettePlayerSo.FindProperty("_inventory").objectReferenceValue = inventory;
+            cassettePlayerSo.FindProperty("_messageText").stringValue = CassetteMessageText;
+            cassettePlayerSo.ApplyModifiedPropertiesWithoutUndo();
 
             return playerGo;
+        }
+
+        private static Light BuildHandheldBeam(Transform cameraTransform, string name, Color color, float range, float spotAngle)
+        {
+            var beamGo = new GameObject(name);
+            beamGo.transform.SetParent(cameraTransform, false);
+
+            var beam = beamGo.AddComponent<Light>();
+            beam.type = LightType.Spot;
+            beam.color = color;
+            beam.range = range;
+            beam.spotAngle = spotAngle;
+            beam.intensity = 2.5f;
+            beam.enabled = false;
+            return beam;
         }
 
         // ---------------------------------------------------------------- exit
@@ -1185,6 +1315,87 @@ namespace EndlessRooms.EditorSetup
             var so = new SerializedObject(jumpScare);
             so.FindProperty("_scareVisual").objectReferenceValue = visual;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ---------------------------------------------------------------- collectible items
+
+        /// <summary>Scattered one per room across offices that are spread out from each other — cassette and recorder deliberately land in different rooms, so finding both (and realizing they combine) takes some exploring rather than being handed together.</summary>
+        private static void BuildCollectibleItems(CollectibleItems items)
+        {
+            float floorY = WallThickness / 2f;
+
+            PlaceCollectible("R02", items.Flashlight, (parent, name, pos, rot) => Level1ItemModelBuilder.BuildFlashlight(parent, name, pos, rot, out _), new Vector3(1.3f, floorY + 0.024f, 1.0f));
+            PlaceCollectible("R03", items.Battery, Level1ItemModelBuilder.BuildBattery, new Vector3(1.3f, floorY + 0.018f, -1.0f));
+            PlaceCollectible("R05", items.UvFlashlight, (parent, name, pos, rot) => Level1ItemModelBuilder.BuildUvFlashlight(parent, name, pos, rot, out _), new Vector3(1.3f, floorY + 0.021f, 1.0f));
+            PlaceCollectible("R08", items.Cassette, Level1ItemModelBuilder.BuildCassette, new Vector3(1.3f, floorY + 0.007f, -1.0f));
+            PlaceCollectible("R10", items.CassetteRecorder, Level1ItemModelBuilder.BuildCassetteRecorder, new Vector3(1.3f, floorY + 0.06f, 1.0f));
+            PlaceCollectible("R13", items.GoldenKey, Level1ItemModelBuilder.BuildGoldenKey, new Vector3(1.3f, floorY + 0.005f, -1.0f));
+            PlaceCollectible("R14", items.BronzeKey, Level1ItemModelBuilder.BuildBronzeKey, new Vector3(1.3f, floorY + 0.005f, 1.0f));
+        }
+
+        private static void PlaceCollectible(string roomId, InventoryItemDefinition item, System.Func<Transform, string, Vector3, Quaternion, GameObject> builder, Vector3 roomLocalOffset)
+        {
+            GameObject room = GameObject.Find(roomId);
+            if (room == null || item == null)
+            {
+                return;
+            }
+
+            Vector3 worldPosition = Level1Layout.LocalToWorld(room.transform.position, GetOfficeSide(roomId), roomLocalOffset);
+            GameObject pickupGo = builder(room.transform, item.DisplayName, worldPosition, Quaternion.identity);
+
+            var pickup = pickupGo.AddComponent<InventoryPickup>();
+            var so = new SerializedObject(pickup);
+            so.FindProperty("_item").objectReferenceValue = item;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static Side GetOfficeSide(string roomId)
+        {
+            foreach (OfficeSpec spec in Level1Layout.Offices)
+            {
+                if (spec.Id == roomId)
+                {
+                    return spec.Side;
+                }
+            }
+
+            return Side.West;
+        }
+
+        /// <summary>
+        /// A FieldNote that's completely inert until the UV flashlight is switched on —
+        /// UvRevealedProp (which has to live on an always-active wrapper, see its own
+        /// doc comment) toggles the actual note active/inactive.
+        /// </summary>
+        private static void BuildUvRevealedBathroomClue()
+        {
+            GameObject bathroom = GameObject.Find("Bathroom_Women");
+            if (bathroom == null)
+            {
+                return;
+            }
+
+            Vector3 clueWorldPos = Level1Layout.LocalToWorld(bathroom.transform.position, Side.West, new Vector3(-2.35f, 1.2f, 2.0f));
+
+            var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            clueGo.name = "UvClue_Code";
+            clueGo.transform.position = clueWorldPos;
+            clueGo.transform.localScale = new Vector3(0.02f, 0.15f, 0.3f);
+            DebugColor.Apply(clueGo, DebugColor.Note);
+            var note = clueGo.AddComponent<FieldNote>();
+            var noteSo = new SerializedObject(note);
+            noteSo.FindProperty("_promptLabel").stringValue = "Read Scrawled Code";
+            noteSo.FindProperty("_fragmentText").stringValue = "Scrawled faintly on the wall, only visible under UV light:\n\n\"2 - 1 - 8 - 7\"";
+            noteSo.ApplyModifiedPropertiesWithoutUndo();
+            clueGo.SetActive(false);
+
+            var wrapperGo = new GameObject("UvClueWrapper");
+            wrapperGo.transform.SetParent(bathroom.transform, true);
+            var revealed = wrapperGo.AddComponent<UvRevealedProp>();
+            var revealedSo = new SerializedObject(revealed);
+            revealedSo.FindProperty("_target").objectReferenceValue = clueGo;
+            revealedSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- UI
@@ -1358,6 +1569,71 @@ namespace EndlessRooms.EditorSetup
                 framesProp.GetArrayElementAtIndex(i).objectReferenceValue = sprites[i];
             }
 
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>Same construction Milestone 8 already established (see Milestone8AssetBuilder.BuildFieldNoteUi) — Level 1 never had this wired in at all, so R01's clue note has been unreadable this whole time.</summary>
+        private static void BuildFieldNoteUi(InputActionReference dismissAction)
+        {
+            var canvasGo = new GameObject("FieldNoteCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var panelRoot = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+            panelRoot.transform.SetParent(canvasGo.transform, false);
+            var panelRect = panelRoot.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.25f, 0.25f);
+            panelRect.anchorMax = new Vector2(0.75f, 0.75f);
+            panelRect.sizeDelta = Vector2.zero;
+            panelRoot.GetComponent<Image>().color = new Color(0.05f, 0.05f, 0.05f, 0.92f);
+
+            var textGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(panelRoot.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.alignment = TextAnchor.UpperLeft;
+            text.color = Color.white;
+            text.fontSize = 18;
+            var textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.05f, 0.05f);
+            textRect.anchorMax = new Vector2(0.95f, 0.95f);
+            textRect.sizeDelta = Vector2.zero;
+
+            panelRoot.SetActive(false);
+
+            var noteUi = canvasGo.AddComponent<FieldNoteUI>();
+            var so = new SerializedObject(noteUi);
+            so.FindProperty("_fragmentText").objectReferenceValue = text;
+            so.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
+            so.FindProperty("_dismissAction").objectReferenceValue = dismissAction;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void BuildInventoryHudUi(Inventory inventory, InventorySelectionController selectionController)
+        {
+            var canvasGo = new GameObject("InventoryHudCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var textGo = new GameObject("ItemListText", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(canvasGo.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.alignment = TextAnchor.LowerCenter;
+            text.color = Color.white;
+            text.fontSize = 16;
+            var textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.1f, 0.02f);
+            textRect.anchorMax = new Vector2(0.9f, 0.1f);
+            textRect.sizeDelta = Vector2.zero;
+
+            var hud = canvasGo.AddComponent<InventoryHudController>();
+            var so = new SerializedObject(hud);
+            so.FindProperty("_inventory").objectReferenceValue = inventory;
+            so.FindProperty("_selection").objectReferenceValue = selectionController;
+            so.FindProperty("_listText").objectReferenceValue = text;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
