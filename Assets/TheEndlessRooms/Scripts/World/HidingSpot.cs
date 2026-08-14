@@ -17,7 +17,12 @@ namespace EndlessRooms.World
         [Tooltip("Leave blank to use the GameObject name as the save identifier.")]
         [SerializeField] private string _saveId = "";
 
+        [Tooltip("Leave unset to keep the old behavior (freeze movement in place, no teleport). When set, the player's CharacterController is moved here while hidden and restored to its pre-hide position/rotation on exit — e.g. actually inside a closet, or under a desk.")]
+        [SerializeField] private Transform _hideAnchor;
+
         private bool _isOccupied;
+        private Vector3 _preHidePosition;
+        private Quaternion _preHideRotation;
 
         public bool IsOccupied => _isOccupied;
         public string SaveId => string.IsNullOrEmpty(_saveId) ? name : _saveId;
@@ -51,7 +56,44 @@ namespace EndlessRooms.World
         public void Interact(InteractionContext context)
         {
             _isOccupied = !_isOccupied;
+
+            if (_hideAnchor != null && context.Instigator != null)
+            {
+                Transform playerTransform = context.Instigator.transform;
+                var characterController = context.Instigator.GetComponent<CharacterController>();
+
+                if (_isOccupied)
+                {
+                    _preHidePosition = playerTransform.position;
+                    _preHideRotation = playerTransform.rotation;
+                    // Only yaw, not the hide anchor's full rotation — the player rig
+                    // splits yaw (root transform) from pitch (a child camera pivot), so
+                    // forcing a pitch onto the root here would just be silently ignored
+                    // by the next mouse-look update anyway.
+                    Teleport(characterController, playerTransform, _hideAnchor.position, Quaternion.Euler(0f, _hideAnchor.eulerAngles.y, 0f));
+                }
+                else
+                {
+                    Teleport(characterController, playerTransform, _preHidePosition, _preHideRotation);
+                }
+            }
+
             GameEvents.RaisePlayerHiddenChanged(_isOccupied);
+        }
+
+        private static void Teleport(CharacterController characterController, Transform playerTransform, Vector3 position, Quaternion rotation)
+        {
+            if (characterController != null)
+            {
+                characterController.enabled = false;
+            }
+
+            playerTransform.SetPositionAndRotation(position, rotation);
+
+            if (characterController != null)
+            {
+                characterController.enabled = true;
+            }
         }
 
         public object CaptureState()

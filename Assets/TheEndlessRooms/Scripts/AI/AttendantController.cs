@@ -35,6 +35,7 @@ namespace EndlessRooms.AI
         private AttendantStateMachine _stateMachine;
         private IDetectable _target;
         private CameraShakeEffect _targetCameraShake;
+        private PlayerController _targetPlayerController;
         private readonly System.Random _rng = new();
 
         private Guid _homeNodeId;
@@ -77,6 +78,10 @@ namespace EndlessRooms.AI
             GameObject playerGo = GameObject.FindGameObjectWithTag("Player");
             _target = playerGo != null ? playerGo.GetComponentInChildren<IDetectable>() : null;
             _targetCameraShake = playerGo != null ? playerGo.GetComponentInChildren<CameraShakeEffect>() : null;
+            // Null for VR rigs (no PlayerController there) — forcing a VR camera to snap
+            // to a direction the player didn't choose is disorienting/nausea-inducing, so
+            // the capture look-snap below is PC-only by construction, not an oversight.
+            _targetPlayerController = playerGo != null ? playerGo.GetComponentInChildren<PlayerController>() : null;
 
             if (_levelBuilder != null)
             {
@@ -469,6 +474,7 @@ namespace EndlessRooms.AI
 
             if (distance <= _config.CaptureRangeMeters)
             {
+                _targetPlayerController?.SnapLookAt(_eyes != null ? _eyes.position : transform.position);
                 GameEvents.RaisePlayerCaptured();
                 ResetAfterCapture();
             }

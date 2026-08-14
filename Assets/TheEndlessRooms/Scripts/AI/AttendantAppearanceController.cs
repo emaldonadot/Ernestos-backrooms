@@ -31,6 +31,12 @@ namespace EndlessRooms.AI
         [SerializeField] private AudioSource _warningAudioSource;
         [SerializeField] private AudioClip _warningSound;
 
+        [Header("Storm (courtyards)")]
+        [SerializeField] private ParticleSystem[] _rainEffects = System.Array.Empty<ParticleSystem>();
+        [SerializeField] private LightningFlash _lightningFlash;
+        [SerializeField] private AudioSource _thunderAudioSource;
+        [SerializeField] private AudioClip _thunderSound;
+
         private AttendantAppearanceState _state;
         private AttendantAppearancePhase _lastAppliedPhase;
         private bool _hasAppliedPhase;
@@ -43,12 +49,29 @@ namespace EndlessRooms.AI
         private void OnEnable()
         {
             GameEvents.PlayerCaptured += ForceIdle;
+            if (_lightningFlash != null)
+            {
+                _lightningFlash.OnFlash += HandleLightningFlash;
+            }
+
             ApplyPhase(_state.Phase, forceReapply: true);
         }
 
         private void OnDisable()
         {
             GameEvents.PlayerCaptured -= ForceIdle;
+            if (_lightningFlash != null)
+            {
+                _lightningFlash.OnFlash -= HandleLightningFlash;
+            }
+        }
+
+        private void HandleLightningFlash()
+        {
+            if (_thunderAudioSource != null && _thunderSound != null)
+            {
+                _thunderAudioSource.PlayOneShot(_thunderSound);
+            }
         }
 
         private void Update()
@@ -81,9 +104,11 @@ namespace EndlessRooms.AI
                 case AttendantAppearancePhase.Idle:
                     SetAttendantActive(false);
                     SetLightsIntensified(false);
+                    SetStorming(false);
                     break;
                 case AttendantAppearancePhase.Warning:
                     SetLightsIntensified(true);
+                    SetStorming(true);
                     if (_warningAudioSource != null && _warningSound != null)
                     {
                         _warningAudioSource.PlayOneShot(_warningSound);
@@ -92,8 +117,34 @@ namespace EndlessRooms.AI
                     break;
                 case AttendantAppearancePhase.Hunting:
                     SetLightsIntensified(true);
+                    SetStorming(true);
                     SetAttendantActive(true);
                     break;
+            }
+        }
+
+        private void SetStorming(bool storming)
+        {
+            foreach (ParticleSystem rain in _rainEffects)
+            {
+                if (rain == null)
+                {
+                    continue;
+                }
+
+                if (storming && !rain.isPlaying)
+                {
+                    rain.Play();
+                }
+                else if (!storming && rain.isPlaying)
+                {
+                    rain.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                }
+            }
+
+            if (_lightningFlash != null)
+            {
+                _lightningFlash.SetStorming(storming);
             }
         }
 

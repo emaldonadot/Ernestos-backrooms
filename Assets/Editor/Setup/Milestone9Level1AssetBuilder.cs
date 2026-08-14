@@ -38,6 +38,11 @@ namespace EndlessRooms.EditorSetup
         private const string JumpScareSpritePath = "Assets/TheEndlessRooms/Art/Textures/JumpScareMonster.png";
         private const float JumpScareSpritePixelsPerUnit = 700f;
 
+        // Shared with BuildFirstKeyLockChain, which positions the R01 key/note relative
+        // to the desk's actual position — keeping one constant means they can't drift
+        // apart the way they did when the desk moved but the item offsets didn't.
+        private const float OfficeDeskLocalX = -0.3f;
+
         private const string WallTexturePath = "Assets/TheEndlessRooms/Art/Textures/WallAlbedo_Level1.png";
         private const string DoorTexturePath = "Assets/TheEndlessRooms/Art/Textures/Door_Level1.png";
         private const string WallMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Wall_Level1.mat";
@@ -67,8 +72,11 @@ namespace EndlessRooms.EditorSetup
                 BuildOffice(levelRoot, office);
             }
 
-            BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.West);
-            BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.East);
+            var courtyardRain = new[]
+            {
+                BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.West),
+                BuildCourtyard(levelRoot, Level1Layout.CourtyardRow, Side.East),
+            };
             BuildBathroom(levelRoot, Level1Layout.BathroomRow, Side.West, "Bathroom_Women");
             BuildBathroom(levelRoot, Level1Layout.BathroomRow, Side.East, "Bathroom_Men");
 
@@ -81,9 +89,11 @@ namespace EndlessRooms.EditorSetup
             playerGo.transform.position = new Vector3(0f, 1f, 1.5f);
             _ = cameraShake;
 
+            LightningFlash lightningFlash = BuildNightAmbiance();
+
             var attendantConfig = Milestone7AssetBuilder.LoadOrCreateAttendantConfig();
             Milestone7AssetBuilder.BuildAttendant(levelGraphGo, attendantConfig, playerGo.transform);
-            BuildAttendantAppearanceCycle(warningLights);
+            BuildAttendantAppearanceCycle(warningLights, courtyardRain, lightningFlash);
 
             BuildExitPoint();
             BuildFirstKeyLockChain(playerGo.transform);
@@ -94,7 +104,6 @@ namespace EndlessRooms.EditorSetup
             BuildGameOverUi();
 
             ApplyLevel1Materials(levelRoot);
-            BuildNightAmbiance();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
@@ -168,8 +177,9 @@ namespace EndlessRooms.EditorSetup
         /// switches ambient lighting from skybox-derived to a fixed dark flat color so
         /// the baseline mood doesn't depend on skybox exposure quirks.
         /// </summary>
-        private static void BuildNightAmbiance()
+        private static LightningFlash BuildNightAmbiance()
         {
+            LightningFlash lightningFlash = null;
             GameObject sunGo = GameObject.Find("Directional Light");
             if (sunGo != null)
             {
@@ -179,14 +189,41 @@ namespace EndlessRooms.EditorSetup
                     sunLight.intensity = 0.12f;
                     sunLight.color = new Color(0.55f, 0.62f, 0.78f);
                 }
+
+                // Reuses the moonlight itself as the lightning source rather than adding
+                // a second light — a flash brightening the same light that represents
+                // the night sky reads correctly, and its SetStorming(false) path resets
+                // straight back to this tuned moonlight intensity/color.
+                lightningFlash = sunGo.AddComponent<LightningFlash>();
+                var flashSo = new SerializedObject(lightningFlash);
+                flashSo.FindProperty("_light").objectReferenceValue = sunLight;
+                flashSo.FindProperty("_baseIntensity").floatValue = 0.12f;
+                flashSo.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            var skybox = new Material(Shader.Find("Skybox/Procedural"));
-            skybox.SetFloat("_Exposure", 0.15f);
-            skybox.SetFloat("_AtmosphereThickness", 0.6f);
-            skybox.SetFloat("_SunSize", 0.02f);
-            skybox.SetColor("_SkyTint", new Color(0.03f, 0.04f, 0.08f));
-            skybox.SetColor("_GroundColor", new Color(0.01f, 0.01f, 0.02f));
+            Texture2D skyTexture = GenerateNightSkyTexture();
+            EnsureFolder("Assets/TheEndlessRooms/Art/Textures");
+            const string skyTexturePath = "Assets/TheEndlessRooms/Art/Textures/NightSky_Level1.asset";
+            if (AssetDatabase.LoadAssetAtPath<Texture2D>(skyTexturePath) != null)
+            {
+                AssetDatabase.DeleteAsset(skyTexturePath);
+            }
+
+            AssetDatabase.CreateAsset(skyTexture, skyTexturePath);
+
+            var skybox = new Material(Shader.Find("Skybox/Panoramic"));
+            // Both property names set defensively — Skybox/Panoramic's main-texture
+            // property name isn't 100% certain from memory alone; SetTexture on a
+            // nonexistent property is a silent no-op, so this is cheap insurance rather
+            // than risking an untextured skybox.
+            skybox.SetTexture("_MainTex", skyTexture);
+            skybox.SetTexture("_Tex", skyTexture);
+            skybox.SetFloat("_Exposure", 1.1f);
+            skybox.SetFloat("_Rotation", 0f);
+            skybox.SetColor("_Tint", new Color(0.5f, 0.5f, 0.5f, 0.5f));
+            skybox.SetFloat("_Mapping", 1f); // Latitude Longitude Layout (equirectangular)
+            skybox.SetFloat("_ImageType", 0f); // 360 Degrees
+            skybox.SetFloat("_MirrorOnBack", 0f);
 
             EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
             const string skyboxPath = "Assets/TheEndlessRooms/Art/Materials/NightSky_Level1.mat";
@@ -200,6 +237,90 @@ namespace EndlessRooms.EditorSetup
             RenderSettings.skybox = skybox;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.035f, 0.035f, 0.05f);
+
+            return lightningFlash;
+        }
+
+        /// <summary>
+        /// Generates a simple equirectangular night-sky texture (dark gradient, scattered
+        /// stars, wispy Perlin-noise clouds, one glowing full moon) purely in code — no
+        /// such asset was provided, and this project has no 3D/HDRI asset import pipeline
+        /// (see Level1FurnitureBuilder's doc comment for the same reasoning applied to
+        /// furniture). Deterministic seed so rebuilds don't reshuffle the stars/moon.
+        /// </summary>
+        private static Texture2D GenerateNightSkyTexture()
+        {
+            const int width = 1024;
+            const int height = 512;
+            var pixels = new Color[width * height];
+            var rng = new System.Random(1337);
+
+            for (int y = 0; y < height; y++)
+            {
+                float t = (float)y / height;
+                float horizonGlow = Mathf.Clamp01(1f - Mathf.Abs(t - 0.55f) * 1.8f);
+                Color baseColor = Color.Lerp(new Color(0.008f, 0.008f, 0.03f), new Color(0.05f, 0.06f, 0.11f), horizonGlow);
+                for (int x = 0; x < width; x++)
+                {
+                    pixels[y * width + x] = baseColor;
+                }
+            }
+
+            const int starCount = 1400;
+            int starBandHeight = (int)(height * 0.72f);
+            for (int i = 0; i < starCount; i++)
+            {
+                int x = rng.Next(width);
+                int y = rng.Next(starBandHeight);
+                float brightness = 0.55f + (float)rng.NextDouble() * 0.45f;
+                pixels[y * width + x] = new Color(brightness, brightness, Mathf.Min(1f, brightness * 0.95f + 0.05f));
+            }
+
+            const float cloudScale = 5.5f;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float noise = Mathf.PerlinNoise(x / (float)width * cloudScale, y / (float)height * cloudScale);
+                    float coverage = Mathf.SmoothStep(0.58f, 0.78f, noise);
+                    if (coverage <= 0f)
+                    {
+                        continue;
+                    }
+
+                    int index = y * width + x;
+                    pixels[index] = Color.Lerp(pixels[index], new Color(0.1f, 0.11f, 0.14f), coverage * 0.55f);
+                }
+            }
+
+            Vector2 moonCenter = new(width * 0.64f, height * 0.24f);
+            float moonRadius = height * 0.055f;
+            float moonGlowRadius = moonRadius * 2.4f;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float dist = Vector2.Distance(new Vector2(x, y), moonCenter);
+                    int index = y * width + x;
+                    if (dist <= moonRadius)
+                    {
+                        pixels[index] = new Color(0.95f, 0.94f, 0.87f);
+                    }
+                    else if (dist <= moonGlowRadius)
+                    {
+                        float glow = 1f - (dist - moonRadius) / (moonGlowRadius - moonRadius);
+                        pixels[index] = Color.Lerp(pixels[index], new Color(0.8f, 0.82f, 0.78f), Mathf.Clamp01(glow) * 0.4f);
+                    }
+                }
+            }
+
+            var texture = new Texture2D(width, height, TextureFormat.RGB24, false)
+            {
+                wrapMode = TextureWrapMode.Repeat,
+            };
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
         }
 
         /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
@@ -373,17 +494,21 @@ namespace EndlessRooms.EditorSetup
             }
             else
             {
-                Vector3 deskPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, floorY, 0f));
-                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(intoRoomFromBackWall));
-                desk.AddComponent<HidingSpot>();
+                // Desk sits toward the room's middle rather than hugging the back wall,
+                // rotated so a seated person looks across it toward the door (a classic
+                // "see who's coming in" layout) — the chair goes on the desk's far side
+                // from the door, tucked between the desk and the back wall.
+                Vector3 deskPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX, floorY, 0f));
+                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(-intoRoomFromBackWall));
+                AddHidingSpot(desk);
 
-                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.05f, floorY, 0f));
-                Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(-intoRoomFromBackWall));
+                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.7f, floorY, 0f));
+                Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(intoRoomFromBackWall));
             }
 
             Vector3 closetPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(-1.7f, floorY, -2.3f));
             GameObject closet = Level1FurnitureBuilder.BuildCloset(room, "Closet", closetPos, Quaternion.LookRotation(intoRoomFromBackWall));
-            closet.AddComponent<HidingSpot>();
+            AddHidingSpot(closet);
 
             if (spec.HasShelf)
             {
@@ -412,7 +537,7 @@ namespace EndlessRooms.EditorSetup
 
         // ---------------------------------------------------------------- courtyards
 
-        private static void BuildCourtyard(Transform parent, int row, Side side)
+        private static ParticleSystem BuildCourtyard(Transform parent, int row, Side side)
         {
             Vector3 center = Level1Layout.RoomCenter(row, side);
             var roomGo = new GameObject($"Courtyard_{side}");
@@ -427,6 +552,45 @@ namespace EndlessRooms.EditorSetup
             CreateBlockWorld(roomGo.transform, "Wall_SideB", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, -Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
 
             AddFurniture(roomGo.transform, "PlanterPlaceholder", Level1Layout.LocalToWorld(center, side, new Vector3(-1.8f, 0.3f, 0f)), new Vector3(0.8f, 0.6f, 0.8f), hideable: false);
+
+            return BuildCourtyardRain(roomGo.transform, center);
+        }
+
+        /// <summary>Off by default (playOnAwake=false, never .Play()'d here) — AttendantAppearanceController starts/stops it alongside its existing light-intensifying calls during Warning/Hunting.</summary>
+        private static ParticleSystem BuildCourtyardRain(Transform parent, Vector3 center)
+        {
+            var rainGo = new GameObject("Rain");
+            rainGo.transform.SetParent(parent, false);
+            rainGo.transform.position = center + new Vector3(0f, WallHeight + 1.5f, 0f);
+
+            var rain = rainGo.AddComponent<ParticleSystem>();
+            ParticleSystem.MainModule main = rain.main;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.startLifetime = 1.2f;
+            main.startSpeed = 0f;
+            main.startSize = 0.03f;
+            main.startColor = new Color(0.75f, 0.8f, 0.9f, 0.55f);
+            main.maxParticles = 500;
+
+            ParticleSystem.EmissionModule emission = rain.emission;
+            emission.rateOverTime = 260f;
+
+            ParticleSystem.ShapeModule shape = rain.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(Level1Layout.RoomDepthX, 0.1f, Level1Layout.RoomWidthZ);
+
+            ParticleSystem.VelocityOverLifetimeModule velocity = rain.velocityOverLifetime;
+            velocity.enabled = true;
+            velocity.y = new ParticleSystem.MinMaxCurve(-9f);
+
+            var renderer = rain.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Stretch;
+            renderer.velocityScale = 0.05f;
+            renderer.lengthScale = 2.5f;
+
+            rain.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            return rain;
         }
 
         // ---------------------------------------------------------------- level graph / Attendant
@@ -503,7 +667,7 @@ namespace EndlessRooms.EditorSetup
         /// found by name here since that method doesn't hand back a reference) starts
         /// inactive; the appearance controller decides when it's actually present.
         /// </summary>
-        private static void BuildAttendantAppearanceCycle(FlickeringLight[] warningLights)
+        private static void BuildAttendantAppearanceCycle(FlickeringLight[] warningLights, ParticleSystem[] courtyardRain, LightningFlash lightningFlash)
         {
             GameObject attendantGo = GameObject.Find("TheAttendant");
             if (attendantGo == null)
@@ -519,17 +683,29 @@ namespace EndlessRooms.EditorSetup
             var audioSource = managerGo.AddComponent<AudioSource>();
             audioSource.spatialBlend = 0f;
 
+            var thunderAudioSource = managerGo.AddComponent<AudioSource>();
+            thunderAudioSource.spatialBlend = 0f;
+
             var appearance = managerGo.AddComponent<AttendantAppearanceController>();
             var so = new SerializedObject(appearance);
             so.FindProperty("_attendantGo").objectReferenceValue = attendantGo;
             so.FindProperty("_attendant").objectReferenceValue = attendantController;
             so.FindProperty("_warningAudioSource").objectReferenceValue = audioSource;
+            so.FindProperty("_lightningFlash").objectReferenceValue = lightningFlash;
+            so.FindProperty("_thunderAudioSource").objectReferenceValue = thunderAudioSource;
 
             SerializedProperty lightsProp = so.FindProperty("_warningLights");
             lightsProp.arraySize = warningLights.Length;
             for (int i = 0; i < warningLights.Length; i++)
             {
                 lightsProp.GetArrayElementAtIndex(i).objectReferenceValue = warningLights[i];
+            }
+
+            SerializedProperty rainProp = so.FindProperty("_rainEffects");
+            rainProp.arraySize = courtyardRain.Length;
+            for (int i = 0; i < courtyardRain.Length; i++)
+            {
+                rainProp.GetArrayElementAtIndex(i).objectReferenceValue = courtyardRain[i];
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -670,8 +846,11 @@ namespace EndlessRooms.EditorSetup
             AssetDatabase.SaveAssets();
 
             // Rests on the R01 desk's actual desktop surface (Level1FurnitureBuilder.BuildDesk:
-            // floorY 0.1 + deskHeight 0.75 = 0.85, plus half the key's own thickness).
-            Vector3 keyPosition = r01.transform.position + new Vector3(-1.7f, 0.86f, 0f);
+            // floorY 0.1 + deskHeight 0.75 = 0.85, plus half the key's own thickness). X
+            // matches OfficeDeskLocalX, the same constant BuildOfficeFurniture positions
+            // the desk with, since the desk's rotation only affects X/Z, not its own
+            // local layout — desk width (and this Z=0 center) still runs along room Z.
+            Vector3 keyPosition = r01.transform.position + new Vector3(OfficeDeskLocalX, 0.86f, 0f);
             var keyGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             keyGo.name = "MasterKeyPickup";
             keyGo.transform.position = keyPosition;
@@ -684,7 +863,7 @@ namespace EndlessRooms.EditorSetup
 
             var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
             clueGo.name = "ClueNote_R01";
-            clueGo.transform.position = r01.transform.position + new Vector3(-1.7f, 0.865f, -0.35f);
+            clueGo.transform.position = r01.transform.position + new Vector3(OfficeDeskLocalX, 0.865f, -0.35f);
             clueGo.transform.localScale = new Vector3(0.22f, 0.03f, 0.28f);
             DebugColor.Apply(clueGo, DebugColor.Note);
             var note = clueGo.AddComponent<FieldNote>();
@@ -874,6 +1053,21 @@ namespace EndlessRooms.EditorSetup
             {
                 furniture.AddComponent<HidingSpot>();
             }
+        }
+
+        /// <summary>Adds a HidingSpot to a Level1FurnitureBuilder model, wiring its "HideAnchor" child (see BuildDesk/BuildCloset) as the camera teleport target if one exists.</summary>
+        private static void AddHidingSpot(GameObject furnitureRoot)
+        {
+            var hidingSpot = furnitureRoot.AddComponent<HidingSpot>();
+            Transform hideAnchor = furnitureRoot.transform.Find("HideAnchor");
+            if (hideAnchor == null)
+            {
+                return;
+            }
+
+            var so = new SerializedObject(hidingSpot);
+            so.FindProperty("_hideAnchor").objectReferenceValue = hideAnchor;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static GameObject CreateBlockWorld(Transform parent, string name, Vector3 worldPosition, Vector3 scale)

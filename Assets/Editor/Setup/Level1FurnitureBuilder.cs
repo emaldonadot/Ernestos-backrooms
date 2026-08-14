@@ -158,6 +158,16 @@ namespace EndlessRooms.EditorSetup
                 }
             }
 
+            // The player rig's camera sits a fixed 1.6m above its CharacterController
+            // root regardless of crouch, so putting the camera at a believable
+            // under-desk height (~0.7m) means placing this hide anchor 1.6m below where
+            // the camera should actually end up — i.e. well below the desk's own floor.
+            // Harmless: HidingSpot disables the CharacterController for as long as it's
+            // hidden, so nothing ever calls Move() against this "buried" position.
+            var hideAnchor = new GameObject("HideAnchor");
+            hideAnchor.transform.SetParent(root.transform, false);
+            hideAnchor.transform.localPosition = new Vector3(0f, -1.0f, 0.15f);
+
             return root;
         }
 
@@ -191,6 +201,14 @@ namespace EndlessRooms.EditorSetup
             Part(root.transform, "Door_Right", new Vector3(doorX, doorCenterY, doorZ), new Vector3(doorWidth, doorHeight, doorThickness));
             Part(root.transform, "Handle_Left", new Vector3(-doorGap / 2f - 0.03f, doorCenterY, doorZ + 0.02f), new Vector3(0.03f, 0.14f, 0.03f));
             Part(root.transform, "Handle_Right", new Vector3(doorGap / 2f + 0.03f, doorCenterY, doorZ + 0.02f), new Vector3(0.03f, 0.14f, 0.03f));
+
+            // Standing height (Y=0 here, same as this root's own floor level) — the
+            // player's camera pivot is a fixed 1.6m above the CharacterController root
+            // it's parented to, matching normal standing eye height. Facing local +Z,
+            // i.e. toward the doors, so "Come Out" stays reachable via the door panels.
+            var hideAnchor = new GameObject("HideAnchor");
+            hideAnchor.transform.SetParent(root.transform, false);
+            hideAnchor.transform.localPosition = Vector3.zero;
 
             return root;
         }
