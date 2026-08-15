@@ -83,6 +83,73 @@ namespace EndlessRooms.EditorSetup
             }
         }
 
+        private const string FabricMaterialPath = "Assets/TheEndlessRooms/Art/Materials/CouchFabric_Level1.mat";
+        private static Material _fabricMaterial;
+
+        private static Material FabricMaterial
+        {
+            get
+            {
+                if (_fabricMaterial != null)
+                {
+                    return _fabricMaterial;
+                }
+
+                _fabricMaterial = AssetDatabase.LoadAssetAtPath<Material>(FabricMaterialPath);
+                if (_fabricMaterial != null)
+                {
+                    return _fabricMaterial;
+                }
+
+                if (!AssetDatabase.IsValidFolder("Assets/TheEndlessRooms/Art/Materials"))
+                {
+                    AssetDatabase.CreateFolder("Assets/TheEndlessRooms/Art", "Materials");
+                }
+
+                _fabricMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new Color(0.16f, 0.19f, 0.22f),
+                };
+                _fabricMaterial.SetFloat("_Smoothness", 0.05f);
+                AssetDatabase.CreateAsset(_fabricMaterial, FabricMaterialPath);
+                return _fabricMaterial;
+            }
+        }
+
+        private const string SafeMetalMaterialPath = "Assets/TheEndlessRooms/Art/Materials/SafeMetal_Level1.mat";
+        private static Material _safeMetalMaterial;
+
+        private static Material SafeMetalMaterial
+        {
+            get
+            {
+                if (_safeMetalMaterial != null)
+                {
+                    return _safeMetalMaterial;
+                }
+
+                _safeMetalMaterial = AssetDatabase.LoadAssetAtPath<Material>(SafeMetalMaterialPath);
+                if (_safeMetalMaterial != null)
+                {
+                    return _safeMetalMaterial;
+                }
+
+                if (!AssetDatabase.IsValidFolder("Assets/TheEndlessRooms/Art/Materials"))
+                {
+                    AssetDatabase.CreateFolder("Assets/TheEndlessRooms/Art", "Materials");
+                }
+
+                _safeMetalMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new Color(0.12f, 0.13f, 0.14f),
+                };
+                _safeMetalMaterial.SetFloat("_Smoothness", 0.5f);
+                _safeMetalMaterial.SetFloat("_Metallic", 0.7f);
+                AssetDatabase.CreateAsset(_safeMetalMaterial, SafeMetalMaterialPath);
+                return _safeMetalMaterial;
+            }
+        }
+
         private static GameObject Part(Transform parent, string name, Vector3 localPosition, Vector3 size, Material material = null)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -299,6 +366,105 @@ namespace EndlessRooms.EditorSetup
             Part(root.transform, "Leg_FrontRight", new Vector3(legX, legHeight / 2f, legZ), new Vector3(legThickness, legHeight, legThickness));
             Part(root.transform, "Leg_BackLeft", new Vector3(-legX, legHeight / 2f, -legZ), new Vector3(legThickness, legHeight, legThickness));
             Part(root.transform, "Leg_BackRight", new Vector3(legX, legHeight / 2f, -legZ), new Vector3(legThickness, legHeight, legThickness));
+
+            return root;
+        }
+
+        /// <summary>Local +Z is the direction a seated person faces (the open side, opposite the backrest); local +X runs along the couch's length.</summary>
+        internal static GameObject BuildCouch(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float width = 1.7f;
+            const float seatDepth = 0.55f;
+            const float seatHeight = 0.42f;
+            const float armWidth = 0.18f;
+            const float armHeight = 0.62f;
+            const float backHeight = 0.78f;
+            const float backThickness = 0.18f;
+            const float legHeight = 0.12f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            float innerWidth = width - armWidth * 2f;
+            Part(root.transform, "Seat", new Vector3(0f, legHeight + seatHeight / 2f, 0f), new Vector3(innerWidth, seatHeight, seatDepth), FabricMaterial);
+            Part(root.transform, "Backrest", new Vector3(0f, legHeight + backHeight / 2f, -seatDepth / 2f + backThickness / 2f), new Vector3(innerWidth, backHeight, backThickness), FabricMaterial);
+            Part(root.transform, "Arm_Left", new Vector3(-width / 2f + armWidth / 2f, legHeight + armHeight / 2f, 0f), new Vector3(armWidth, armHeight, seatDepth), FabricMaterial);
+            Part(root.transform, "Arm_Right", new Vector3(width / 2f - armWidth / 2f, legHeight + armHeight / 2f, 0f), new Vector3(armWidth, armHeight, seatDepth), FabricMaterial);
+
+            float legX = width / 2f - armWidth / 2f;
+            float legZ = seatDepth / 2f - 0.05f;
+            Part(root.transform, "Leg_FrontLeft", new Vector3(-legX, legHeight / 2f, legZ), new Vector3(0.06f, legHeight, 0.06f));
+            Part(root.transform, "Leg_FrontRight", new Vector3(legX, legHeight / 2f, legZ), new Vector3(0.06f, legHeight, 0.06f));
+            Part(root.transform, "Leg_BackLeft", new Vector3(-legX, legHeight / 2f, -legZ), new Vector3(0.06f, legHeight, 0.06f));
+            Part(root.transform, "Leg_BackRight", new Vector3(legX, legHeight / 2f, -legZ), new Vector3(0.06f, legHeight, 0.06f));
+
+            return root;
+        }
+
+        /// <summary>Symmetric — orientation barely matters, kept for placement consistency with other builders.</summary>
+        internal static GameObject BuildSideTable(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float size = 0.45f;
+            const float tableHeight = 0.5f;
+            const float topThickness = 0.03f;
+            const float legThickness = 0.05f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Tabletop", new Vector3(0f, tableHeight - topThickness / 2f, 0f), new Vector3(size, topThickness, size));
+
+            float legOffset = size / 2f - legThickness / 2f - 0.02f;
+            float legHeight = tableHeight - topThickness;
+            foreach (float xSign in new[] { -1f, 1f })
+            {
+                foreach (float zSign in new[] { -1f, 1f })
+                {
+                    Part(root.transform, "Leg", new Vector3(xSign * legOffset, legHeight / 2f, zSign * legOffset), new Vector3(legThickness, legHeight, legThickness));
+                }
+            }
+
+            return root;
+        }
+
+        /// <summary>A small floor safe. Local +Z is the door/keypad face.</summary>
+        internal static GameObject BuildKeypadSafe(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float width = 0.42f;
+            const float height = 0.45f;
+            const float depth = 0.4f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Body", new Vector3(0f, height / 2f, 0f), new Vector3(width, height, depth), SafeMetalMaterial);
+
+            float faceZ = depth / 2f + 0.005f;
+            Part(root.transform, "KeypadPlate", new Vector3(width * 0.22f, height * 0.62f, faceZ), new Vector3(0.12f, 0.12f, 0.01f), WornWoodMaterial);
+            Part(root.transform, "Handle", new Vector3(-width * 0.2f, height * 0.5f, faceZ + 0.02f), new Vector3(0.03f, 0.16f, 0.03f), SafeMetalMaterial);
+
+            return root;
+        }
+
+        /// <summary>A standalone lockable drawer unit — local +Z is the drawer-front face.</summary>
+        internal static GameObject BuildLockableDrawerCabinet(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float width = 0.42f;
+            const float height = 0.52f;
+            const float depth = 0.46f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Part(root.transform, "Body", new Vector3(0f, height / 2f, 0f), new Vector3(width, height, depth));
+
+            float faceZ = depth / 2f + 0.006f;
+            Part(root.transform, "DrawerFront", new Vector3(0f, height * 0.6f, faceZ), new Vector3(width - 0.05f, 0.18f, 0.012f));
+            Part(root.transform, "DrawerHandle", new Vector3(0f, height * 0.6f, faceZ + 0.02f), new Vector3(0.14f, 0.02f, 0.03f), SafeMetalMaterial);
 
             return root;
         }
