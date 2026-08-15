@@ -50,6 +50,20 @@ namespace EndlessRooms.EditorSetup
             }
         }
 
+        private const string DeskTextureTexturePath = "Assets/TheEndlessRooms/Art/Textures/DeskTexture_Level1.png";
+        private const string DeskTextureMaterialPath = "Assets/TheEndlessRooms/Art/Materials/DeskTexture_Level1.mat";
+        private static Material _deskTextureMaterial;
+
+        /// <summary>Desks and chairs specifically (see BuildDesk/BuildDeskDrawerTray/BuildChair) — every other WornWoodMaterial user (closet, bookshelf, meeting table) is unaffected.</summary>
+        private static Material DeskTextureMaterial
+        {
+            get
+            {
+                _deskTextureMaterial ??= Milestone9Level1AssetBuilder.CreateSimpleTexturedMaterial(DeskTextureTexturePath, DeskTextureMaterialPath, mirrorHorizontal: false);
+                return _deskTextureMaterial != null ? _deskTextureMaterial : WornWoodMaterial;
+            }
+        }
+
         private const string PorcelainMaterialPath = "Assets/TheEndlessRooms/Art/Materials/Porcelain_Level1.mat";
         private static Material _porcelainMaterial;
 
@@ -175,17 +189,17 @@ namespace EndlessRooms.EditorSetup
             root.transform.SetParent(parent, true);
             root.transform.SetPositionAndRotation(worldPosition, rotation);
 
-            Part(root.transform, "Seat", new Vector3(0f, seatHeight, 0f), new Vector3(width, seatThickness, depth));
-            Part(root.transform, "Backrest", new Vector3(0f, seatHeight + backrestHeight / 2f, -depth / 2f + legThickness / 2f), new Vector3(width, backrestHeight, 0.03f));
+            Part(root.transform, "Seat", new Vector3(0f, seatHeight, 0f), new Vector3(width, seatThickness, depth), DeskTextureMaterial);
+            Part(root.transform, "Backrest", new Vector3(0f, seatHeight + backrestHeight / 2f, -depth / 2f + legThickness / 2f), new Vector3(width, backrestHeight, 0.03f), DeskTextureMaterial);
 
             float legX = width / 2f - legThickness / 2f;
             float frontZ = depth / 2f - legThickness / 2f;
             float backZ = -depth / 2f + legThickness / 2f;
 
-            Part(root.transform, "Leg_FrontLeft", new Vector3(-legX, seatHeight / 2f, frontZ), new Vector3(legThickness, seatHeight, legThickness));
-            Part(root.transform, "Leg_FrontRight", new Vector3(legX, seatHeight / 2f, frontZ), new Vector3(legThickness, seatHeight, legThickness));
-            Part(root.transform, "Leg_BackLeft", new Vector3(-legX, (seatHeight + backrestHeight) / 2f, backZ), new Vector3(legThickness, seatHeight + backrestHeight, legThickness));
-            Part(root.transform, "Leg_BackRight", new Vector3(legX, (seatHeight + backrestHeight) / 2f, backZ), new Vector3(legThickness, seatHeight + backrestHeight, legThickness));
+            Part(root.transform, "Leg_FrontLeft", new Vector3(-legX, seatHeight / 2f, frontZ), new Vector3(legThickness, seatHeight, legThickness), DeskTextureMaterial);
+            Part(root.transform, "Leg_FrontRight", new Vector3(legX, seatHeight / 2f, frontZ), new Vector3(legThickness, seatHeight, legThickness), DeskTextureMaterial);
+            Part(root.transform, "Leg_BackLeft", new Vector3(-legX, (seatHeight + backrestHeight) / 2f, backZ), new Vector3(legThickness, seatHeight + backrestHeight, legThickness), DeskTextureMaterial);
+            Part(root.transform, "Leg_BackRight", new Vector3(legX, (seatHeight + backrestHeight) / 2f, backZ), new Vector3(legThickness, seatHeight + backrestHeight, legThickness), DeskTextureMaterial);
 
             return root;
         }
@@ -227,12 +241,12 @@ namespace EndlessRooms.EditorSetup
         /// <paramref name="interactiveDrawerAnchor"/> deliberately faces the opposite way
         /// (local -Z, i.e. the desk's front/door-facing side) since a real interactive
         /// drawer needs to be reachable from where the player actually walks up, not
-        /// from the chair side. On the right-hand pedestal (opposite the decorative
-        /// fronts' left-first convention), standing proud of the pedestal face by a full
-        /// 8cm rather than the decorative fronts' near-flush 5mm — a raycast/SphereCast
-        /// aimed at a drawer that's nearly coplanar with the pedestal's own big collider
-        /// was hitting the pedestal instead more often than not. Its own local +Z is the
-        /// "slide open" direction.
+        /// from the chair side. On the left pedestal (a seated person's right hand,
+        /// working through this desk's own LookRotation(-intoRoomFromBackWall) frame),
+        /// standing proud of the pedestal face by a full 8cm rather than the decorative
+        /// fronts' near-flush 5mm — a raycast/SphereCast aimed at a drawer that's nearly
+        /// coplanar with the pedestal's own big collider was hitting the pedestal
+        /// instead more often than not. Its own local +Z is the "slide open" direction.
         /// </summary>
         internal static GameObject BuildDesk(Transform parent, string name, Vector3 worldPosition, Quaternion rotation, out Transform interactiveDrawerAnchor)
         {
@@ -250,13 +264,13 @@ namespace EndlessRooms.EditorSetup
             root.transform.SetParent(parent, true);
             root.transform.SetPositionAndRotation(worldPosition, rotation);
 
-            Part(root.transform, "Desktop", new Vector3(0f, deskHeight - desktopThickness / 2f, 0f), new Vector3(width, desktopThickness, depth));
+            Part(root.transform, "Desktop", new Vector3(0f, deskHeight - desktopThickness / 2f, 0f), new Vector3(width, desktopThickness, depth), DeskTextureMaterial);
 
             float pedestalX = width / 2f - pedestalWidth / 2f;
-            Part(root.transform, "Pedestal_Left", new Vector3(-pedestalX, pedestalHeight / 2f, 0f), new Vector3(pedestalWidth, pedestalHeight, pedestalDepth));
-            Part(root.transform, "Pedestal_Right", new Vector3(pedestalX, pedestalHeight / 2f, 0f), new Vector3(pedestalWidth, pedestalHeight, pedestalDepth));
+            Part(root.transform, "Pedestal_Left", new Vector3(-pedestalX, pedestalHeight / 2f, 0f), new Vector3(pedestalWidth, pedestalHeight, pedestalDepth), DeskTextureMaterial);
+            Part(root.transform, "Pedestal_Right", new Vector3(pedestalX, pedestalHeight / 2f, 0f), new Vector3(pedestalWidth, pedestalHeight, pedestalDepth), DeskTextureMaterial);
 
-            Part(root.transform, "ModestyPanel", new Vector3(0f, deskHeight - desktopThickness - modestyHeight / 2f, -pedestalDepth / 2f + 0.01f), new Vector3(modestyWidth, modestyHeight, 0.02f));
+            Part(root.transform, "ModestyPanel", new Vector3(0f, deskHeight - desktopThickness - modestyHeight / 2f, -pedestalDepth / 2f + 0.01f), new Vector3(modestyWidth, modestyHeight, 0.02f), DeskTextureMaterial);
 
             // Drawer fronts + handles, proud of each pedestal's outward face (local +Z).
             float pedestalFaceZ = pedestalDepth / 2f + 0.005f;
@@ -265,7 +279,7 @@ namespace EndlessRooms.EditorSetup
             {
                 foreach (float drawerY in drawerCenters)
                 {
-                    Part(root.transform, "DrawerFront", new Vector3(x, drawerY, pedestalFaceZ), new Vector3(pedestalWidth - 0.06f, 0.30f, 0.01f));
+                    Part(root.transform, "DrawerFront", new Vector3(x, drawerY, pedestalFaceZ), new Vector3(pedestalWidth - 0.06f, 0.30f, 0.01f), DeskTextureMaterial);
                     Part(root.transform, "DrawerHandle", new Vector3(x, drawerY, pedestalFaceZ + 0.02f), new Vector3(0.12f, 0.02f, 0.03f));
                 }
             }
@@ -280,9 +294,16 @@ namespace EndlessRooms.EditorSetup
             hideAnchor.transform.SetParent(root.transform, false);
             hideAnchor.transform.localPosition = new Vector3(0f, -1.0f, 0.15f);
 
+            // -pedestalX, not +pedestalX (the previous round's fix flipped the wrong
+            // way): the desk faces the door with the chair tucked in behind it, so a
+            // seated person faces local +X. Working through the desk's own
+            // LookRotation(-intoRoomFromBackWall) frame, that seated person's right
+            // hand lands on the -pedestalX pedestal, consistently for both West and
+            // East rooms (Level1Layout.LocalToWorld doesn't mirror Z, but the desk's
+            // own rotation already accounts for that when placing this anchor).
             var anchorGo = new GameObject("InteractiveDrawerAnchor");
             anchorGo.transform.SetParent(root.transform, false);
-            anchorGo.transform.localPosition = new Vector3(pedestalX, drawerCenters[0], -(pedestalFaceZ + 0.08f));
+            anchorGo.transform.localPosition = new Vector3(-pedestalX, drawerCenters[0], -(pedestalFaceZ + 0.08f));
             anchorGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             interactiveDrawerAnchor = anchorGo.transform;
 
@@ -483,13 +504,13 @@ namespace EndlessRooms.EditorSetup
             var tray = new GameObject(name);
             tray.transform.SetParent(anchor, false);
 
-            Part(tray.transform, "Front", new Vector3(0f, 0f, 0f), new Vector3(width, frontHeight, 0.014f));
+            Part(tray.transform, "Front", new Vector3(0f, 0f, 0f), new Vector3(width, frontHeight, 0.014f), DeskTextureMaterial);
             Part(tray.transform, "Handle", new Vector3(0f, 0f, 0.022f), new Vector3(0.12f, 0.02f, 0.03f), SafeMetalMaterial);
             // Named "Bottom", not "Floor" — Milestone9Level1AssetBuilder.ApplyLevel1Materials
             // name-matches any Transform called "Floor" anywhere in the whole level
             // hierarchy and recolors it with the carpet material, which is exactly what
             // was happening to this part before the rename.
-            Part(tray.transform, "Bottom", new Vector3(0f, -frontHeight / 2f + 0.006f, -trayDepth / 2f), new Vector3(width - 0.02f, 0.012f, trayDepth));
+            Part(tray.transform, "Bottom", new Vector3(0f, -frontHeight / 2f + 0.006f, -trayDepth / 2f), new Vector3(width - 0.02f, 0.012f, trayDepth), DeskTextureMaterial);
 
             return tray;
         }

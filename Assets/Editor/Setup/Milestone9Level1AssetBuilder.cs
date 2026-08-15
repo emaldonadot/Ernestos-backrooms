@@ -104,6 +104,13 @@ namespace EndlessRooms.EditorSetup
             }
 
             new GameObject("GameBootstrap").AddComponent<Core.GameBootstrap>();
+            new GameObject("LevelProgressService").AddComponent<LevelProgressService>();
+
+            LevelDefinition thisLevel = LevelCatalogBuilder.LoadOrCreateLevel1();
+            var completionRecorder = new GameObject("LevelCompletionRecorder").AddComponent<LevelCompletionRecorder>();
+            var recorderSo = new SerializedObject(completionRecorder);
+            recorderSo.FindProperty("_level").objectReferenceValue = thisLevel;
+            recorderSo.ApplyModifiedPropertiesWithoutUndo();
 
             var levelRoot = new GameObject("Level1_HorrorOffice").transform;
 
@@ -436,7 +443,7 @@ namespace EndlessRooms.EditorSetup
         }
 
         /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
-        private static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath, bool mirrorHorizontal)
+        internal static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath, bool mirrorHorizontal)
         {
             var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (albedo == null)
@@ -2097,7 +2104,7 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static GameObject CreateBlockWorld(Transform parent, string name, Vector3 worldPosition, Vector3 scale)
+        internal static GameObject CreateBlockWorld(Transform parent, string name, Vector3 worldPosition, Vector3 scale)
         {
             var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
             block.name = name;
@@ -2117,7 +2124,7 @@ namespace EndlessRooms.EditorSetup
             return block;
         }
 
-        private static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path))
             {
