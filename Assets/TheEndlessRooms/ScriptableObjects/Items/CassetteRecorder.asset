@@ -15,3 +15,4 @@ MonoBehaviour:
   ItemId: cassette_recorder
   DisplayName: Cassette Recorder
   Description: A portable cassette recorder. Needs a tape.
+  Icon: {fileID: 21300000, guid: 5a11d908399d0f04b9692ce14e91a1fc, type: 3}

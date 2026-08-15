@@ -15,3 +15,4 @@ MonoBehaviour:
   ItemId: golden_key
   DisplayName: Golden Key
   Description: An ornate golden key.
+  Icon: {fileID: 21300000, guid: 8dbb5446a60e108abaa1ca5fa80db23c, type: 3}

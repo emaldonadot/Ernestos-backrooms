@@ -58,6 +58,7 @@ namespace EndlessRooms.Player
             {
                 _focusedInteractable = candidate;
                 FocusChanged?.Invoke(_focusedInteractable);
+                GameEvents.RaiseInteractableFocusChanged(_focusedInteractable);
             }
         }
 

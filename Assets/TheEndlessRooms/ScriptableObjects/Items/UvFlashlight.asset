@@ -15,3 +15,4 @@ MonoBehaviour:
   ItemId: uv_flashlight
   DisplayName: UV Flashlight
   Description: Reveals markings invisible under normal light. Needs batteries.
+  Icon: {fileID: 21300000, guid: a3da795b460666357a9f10a7e935804b, type: 3}

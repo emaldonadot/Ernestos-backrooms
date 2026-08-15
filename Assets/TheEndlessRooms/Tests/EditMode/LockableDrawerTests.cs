@@ -6,10 +6,9 @@ using UnityEngine;
 namespace EndlessRooms.Tests.EditMode
 {
     /// <summary>
-    /// Covers <see cref="LockableDrawer"/>'s item-lock (Milestone 9's progression
-    /// redesign) — same shape as <see cref="DoorItemLockTests"/>, but also checks the
-    /// non-consuming case (an ID Card has to keep working after unlocking a drawer),
-    /// which Door's default-consuming lock never needed to prove.
+    /// Covers <see cref="LockableDrawer"/>'s two-step item-lock (interact only ever
+    /// gives feedback; unlocking happens by selecting the required item and using it
+    /// while this drawer is focused) plus the free/no-key-needed drawer every desk gets.
     /// </summary>
     public class LockableDrawerTests
     {
@@ -21,30 +20,62 @@ namespace EndlessRooms.Tests.EditMode
             return item;
         }
 
-        private static (GameObject drawerGo, LockableDrawer drawer, GameObject content) MakeLockedDrawer(InventoryItemDefinition requiredItem, bool consume)
+        private static (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) MakeLockedDrawer(InventoryItemDefinition requiredItem, bool consume)
         {
             var drawerGo = new GameObject("TestDrawer");
             var drawer = drawerGo.AddComponent<LockableDrawer>();
             var content = new GameObject("Content");
             content.transform.SetParent(drawerGo.transform);
 
-            drawer.Configure(requiredItem, consume, content);
+            var playerGo = new GameObject("TestPlayer");
+            var inventory = playerGo.AddComponent<Inventory>();
 
-            return (drawerGo, drawer, content);
+            drawer.Configure(requiredItem, consume, content, inventory);
+
+            return (drawerGo, drawer, content, inventory, playerGo);
         }
 
         [Test]
-        public void Interact_WithRequiredItemConsumed_UnlocksConsumesItemAndRevealsContent()
+        public void Interact_LockedWithoutRequiredItem_StaysLockedAndDoesNotThrow()
         {
             InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
-            (GameObject drawerGo, LockableDrawer drawer, GameObject content) = MakeLockedDrawer(item, consume: true);
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, _, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
 
-            var playerGo = new GameObject("TestPlayer");
-            var inventory = playerGo.AddComponent<Inventory>();
+            Assert.DoesNotThrow(() => drawer.Interact(new InteractionContext(playerGo)));
+            Assert.IsFalse(drawer.IsUnlocked);
+            Assert.IsFalse(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void Interact_LockedWithRequiredItemInInventory_StillDoesNotUnlock()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
             inventory.TryAddItem(item);
 
             drawer.Interact(new InteractionContext(playerGo));
 
+            Assert.IsFalse(drawer.IsUnlocked, "Carrying the key should not be enough — it has to be used, not just held.");
+            Assert.IsFalse(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void TryUnlockWithUsedItem_FocusedWithRequiredItemConsumed_UnlocksConsumesItemAndRevealsContent()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
+            drawer.SetFocused(true);
+
+            bool unlocked = drawer.TryUnlockWithUsedItem("bronze_key");
+
+            Assert.IsTrue(unlocked);
             Assert.IsTrue(drawer.IsUnlocked);
             Assert.IsFalse(inventory.HasItem("bronze_key"));
             Assert.IsTrue(content.activeSelf);
@@ -54,17 +85,16 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
-        public void Interact_WithRequiredItemNotConsumed_UnlocksAndKeepsItem()
+        public void TryUnlockWithUsedItem_FocusedWithRequiredItemNotConsumed_UnlocksAndKeepsItem()
         {
             InventoryItemDefinition item = MakeItem("id_card", "Office ID Card");
-            (GameObject drawerGo, LockableDrawer drawer, GameObject content) = MakeLockedDrawer(item, consume: false);
-
-            var playerGo = new GameObject("TestPlayer");
-            var inventory = playerGo.AddComponent<Inventory>();
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: false);
             inventory.TryAddItem(item);
+            drawer.SetFocused(true);
 
-            drawer.Interact(new InteractionContext(playerGo));
+            bool unlocked = drawer.TryUnlockWithUsedItem("id_card");
 
+            Assert.IsTrue(unlocked);
             Assert.IsTrue(drawer.IsUnlocked);
             Assert.IsTrue(inventory.HasItem("id_card"));
             Assert.IsTrue(content.activeSelf);
@@ -74,16 +104,15 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
-        public void Interact_WithoutRequiredItem_StaysLockedAndContentStaysHidden()
+        public void TryUnlockWithUsedItem_NotFocused_StaysLocked()
         {
             InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
-            (GameObject drawerGo, LockableDrawer drawer, GameObject content) = MakeLockedDrawer(item, consume: true);
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
 
-            var playerGo = new GameObject("TestPlayer");
-            playerGo.AddComponent<Inventory>();
+            bool unlocked = drawer.TryUnlockWithUsedItem("bronze_key");
 
-            drawer.Interact(new InteractionContext(playerGo));
-
+            Assert.IsFalse(unlocked, "Using the right key while looking at something else shouldn't unlock this drawer.");
             Assert.IsFalse(drawer.IsUnlocked);
             Assert.IsFalse(content.activeSelf);
 
@@ -92,27 +121,78 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
-        public void GetInteractionPrompt_LockedWithRequiredItem_MentionsTheItemName()
+        public void TryUnlockWithUsedItem_WrongItem_StaysLocked()
         {
             InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
-            (GameObject drawerGo, LockableDrawer drawer, _) = MakeLockedDrawer(item, consume: true);
+            var wrongItem = MakeItem("golden_key", "Golden Key");
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
+            inventory.TryAddItem(wrongItem);
+            drawer.SetFocused(true);
+
+            bool unlocked = drawer.TryUnlockWithUsedItem("golden_key");
+
+            Assert.IsFalse(unlocked);
+            Assert.IsFalse(drawer.IsUnlocked);
+            Assert.IsFalse(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void GetInteractionPrompt_LockedWithoutItem_IsGeneric()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            (GameObject drawerGo, LockableDrawer drawer, _, _, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+
+            Assert.AreEqual("Locked Drawer", drawer.GetInteractionPrompt());
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void GetInteractionPrompt_LockedWithItemInInventory_NamesTheItem()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            (GameObject drawerGo, LockableDrawer drawer, _, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
 
             StringAssert.Contains("Bronze Key", drawer.GetInteractionPrompt());
 
             Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void Interact_NoRequiredItemConfigured_OpensImmediately()
+        {
+            var drawerGo = new GameObject("TestDrawer");
+            var drawer = drawerGo.AddComponent<LockableDrawer>();
+            var content = new GameObject("Content");
+            content.transform.SetParent(drawerGo.transform);
+            var playerGo = new GameObject("TestPlayer");
+            var inventory = playerGo.AddComponent<Inventory>();
+            drawer.Configure(null, false, content, inventory);
+
+            drawer.Interact(new InteractionContext(playerGo));
+
+            Assert.IsTrue(drawer.IsUnlocked);
+            Assert.IsTrue(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
         }
 
         [Test]
         public void CanInteract_OnceUnlocked_ReturnsFalse()
         {
             InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
-            (GameObject drawerGo, LockableDrawer drawer, _) = MakeLockedDrawer(item, consume: true);
-
-            var playerGo = new GameObject("TestPlayer");
-            var inventory = playerGo.AddComponent<Inventory>();
+            (GameObject drawerGo, LockableDrawer drawer, _, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
             inventory.TryAddItem(item);
-
-            drawer.Interact(new InteractionContext(playerGo));
+            drawer.SetFocused(true);
+            drawer.TryUnlockWithUsedItem("bronze_key");
 
             Assert.IsFalse(drawer.CanInteract(new InteractionContext(playerGo)));
 

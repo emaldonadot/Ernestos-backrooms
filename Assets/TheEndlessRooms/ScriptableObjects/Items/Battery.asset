@@ -15,3 +15,4 @@ MonoBehaviour:
   ItemId: battery
   DisplayName: D Battery
   Description: A worn D-cell battery. Powers small electronics.
+  Icon: {fileID: 21300000, guid: 68d794b48413878e5a8ab8b54bf33547, type: 3}

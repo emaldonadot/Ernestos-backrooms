@@ -1056,34 +1056,46 @@ namespace EndlessRooms.EditorSetup
         {
             EnsureFolder(ItemsFolder);
 
-            InventoryItemDefinition Create(string fileName, string itemId, string displayName, string description)
+            InventoryItemDefinition Create(string fileName, string itemId, string displayName, string description, System.Func<Sprite> buildIcon)
             {
                 string path = $"{ItemsFolder}/{fileName}.asset";
-                var existing = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(path);
-                if (existing != null)
+                var item = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(path);
+                bool isNew = item == null;
+                if (isNew)
                 {
-                    return existing;
+                    item = ScriptableObject.CreateInstance<InventoryItemDefinition>();
+                    item.ItemId = itemId;
+                    item.DisplayName = displayName;
+                    item.Description = description;
+                    AssetDatabase.CreateAsset(item, path);
                 }
 
-                var item = ScriptableObject.CreateInstance<InventoryItemDefinition>();
-                item.ItemId = itemId;
-                item.DisplayName = displayName;
-                item.Description = description;
-                AssetDatabase.CreateAsset(item, path);
+                // Backfills Icon on existing assets too, not just newly-created ones —
+                // items already carried this round from before icons existed shouldn't
+                // stay blank forever.
+                if (item.Icon == null)
+                {
+                    item.Icon = buildIcon();
+                    EditorUtility.SetDirty(item);
+                }
+
                 return item;
             }
 
-            return new CollectibleItems
+            var result = new CollectibleItems
             {
-                Battery = Create("Battery", "battery", "D Battery", "A worn D-cell battery. Powers small electronics."),
-                Cassette = Create("Cassette", "cassette", "Audio Cassette", "A labeled cassette tape. Needs a player."),
-                CassetteRecorder = Create("CassetteRecorder", "cassette_recorder", "Cassette Recorder", "A portable cassette recorder. Needs a tape."),
-                UvFlashlight = Create("UvFlashlight", "uv_flashlight", "UV Flashlight", "Reveals markings invisible under normal light. Needs batteries."),
-                Flashlight = Create("Flashlight", "flashlight", "Flashlight", "A dependable flashlight."),
-                GoldenKey = Create("GoldenKey", "golden_key", "Golden Key", "An ornate golden key."),
-                BronzeKey = Create("BronzeKey", "bronze_key", "Bronze Key", "A plain bronze key."),
-                IdCard = Create("IdCard", "id_card", "Office ID Card", "An employee ID card. Probably still opens a few doors around here."),
+                Battery = Create("Battery", "battery", "D Battery", "A worn D-cell battery. Powers small electronics.", Level1ItemIconBuilder.BuildBatteryIcon),
+                Cassette = Create("Cassette", "cassette", "Audio Cassette", "A labeled cassette tape. Needs a player.", Level1ItemIconBuilder.BuildCassetteIcon),
+                CassetteRecorder = Create("CassetteRecorder", "cassette_recorder", "Cassette Recorder", "A portable cassette recorder. Needs a tape.", Level1ItemIconBuilder.BuildCassetteRecorderIcon),
+                UvFlashlight = Create("UvFlashlight", "uv_flashlight", "UV Flashlight", "Reveals markings invisible under normal light. Needs batteries.", Level1ItemIconBuilder.BuildUvFlashlightIcon),
+                Flashlight = Create("Flashlight", "flashlight", "Flashlight", "A dependable flashlight.", Level1ItemIconBuilder.BuildFlashlightIcon),
+                GoldenKey = Create("GoldenKey", "golden_key", "Golden Key", "An ornate golden key.", Level1ItemIconBuilder.BuildGoldenKeyIcon),
+                BronzeKey = Create("BronzeKey", "bronze_key", "Bronze Key", "A plain bronze key.", Level1ItemIconBuilder.BuildBronzeKeyIcon),
+                IdCard = Create("IdCard", "id_card", "Office ID Card", "An employee ID card. Probably still opens a few doors around here.", Level1ItemIconBuilder.BuildIdCardIcon),
             };
+
+            AssetDatabase.SaveAssets();
+            return result;
         }
 
         private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, CollectibleItems items, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake, out Inventory inventory, out InventorySelectionController selectionController)
@@ -1308,8 +1320,14 @@ namespace EndlessRooms.EditorSetup
             GameObject mainCorridor = GameObject.Find("MainCorridor");
             Transform parent = mainCorridor != null ? mainCorridor.transform : null;
 
-            Vector3 cellCenter = Level1Layout.CorridorCellCenter(1);
-            Vector3 couchPos = cellCenter + new Vector3(-(Level1Layout.CorridorWidth / 2f - 0.9f), 0f, 0f);
+            // R01's door gap sits at RowCenterZ(1) +- DoorWidth/2 — placing the couch at
+            // the row's own center, as the first pass did, put it right in that gap,
+            // blocking R01's door. Rooms are contiguous along Z (RoomWidthZ == RowSpacing,
+            // no gap between rows), so the row1/row2 boundary is solid wall on both sides
+            // of it (the tail end of R01's wall and the start of R03's) — a good 4m of
+            // clear wall to work with instead.
+            float boundaryZ = Level1Layout.RowCenterZ(1) + Level1Layout.RoomWidthZ / 2f;
+            Vector3 couchPos = new(-(Level1Layout.CorridorWidth / 2f - 0.9f), 0f, boundaryZ);
             Level1FurnitureBuilder.BuildCouch(parent, "Couch_Start", couchPos, Quaternion.LookRotation(Vector3.right));
 
             Vector3 tablePos = couchPos + new Vector3(0f, 0f, 1.15f);
@@ -1340,6 +1358,7 @@ namespace EndlessRooms.EditorSetup
                 GameObject idCardGo = Level1ItemModelBuilder.BuildIdCard(r01, items.IdCard.DisplayName, pos, Quaternion.identity);
                 AddPickup(idCardGo, items.IdCard);
                 BuildSpiderWeb(r01, r01Center, r01Side, inventory, items.IdCard, null, null, null);
+                AddFreeDrawer("R01", inventory);
             }
 
             // R02 — Battery locked in a drawer that only the Bronze Key opens. Built into the desk's own drawer slot (see BuildDeskDrawerTrayFor) rather than a standalone floor cabinet, so it doesn't block the walk from the door to the desk.
@@ -1352,7 +1371,7 @@ namespace EndlessRooms.EditorSetup
                     AddPickup(batteryGo, items.Battery);
 
                     var drawer = tray.AddComponent<LockableDrawer>();
-                    drawer.Configure(items.BronzeKey, true, batteryGo, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    drawer.Configure(items.BronzeKey, true, batteryGo, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
                     BuildSpiderWeb(r02, r02Center, r02Side, inventory, items.Battery, items.BronzeKey, null, null);
                 }
             }
@@ -1362,6 +1381,7 @@ namespace EndlessRooms.EditorSetup
             {
                 Vector3 pos = Level1Layout.LocalToWorld(r03Center, r03Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
                 SpawnLoreNote(r03, pos, "Read Note", "\"Third work order this month for the R03 radiator. Nobody's coming to fix it. Nobody's coming for any of it.\"");
+                AddFreeDrawer("R03", inventory);
             }
 
             // R04 — Recorder, sitting openly (meeting-table room, no desk).
@@ -1381,7 +1401,7 @@ namespace EndlessRooms.EditorSetup
                 {
                     GameObject badgeNote = BuildLoreNoteGameObject(tray.transform, contentPos, "Look Inside", "Just a dusty old employee badge, long expired. Not what you were hoping for.");
                     var drawer = tray.AddComponent<LockableDrawer>();
-                    drawer.Configure(items.IdCard, false, badgeNote, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    drawer.Configure(items.IdCard, false, badgeNote, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
                 }
             }
 
@@ -1395,7 +1415,7 @@ namespace EndlessRooms.EditorSetup
                     AddPickup(cassetteGo, items.Cassette);
 
                     var drawer = tray.AddComponent<LockableDrawer>();
-                    drawer.Configure(items.IdCard, false, cassetteGo, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    drawer.Configure(items.IdCard, false, cassetteGo, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
                     BuildSpiderWeb(r06, r06Center, r06Side, inventory, items.Cassette, items.IdCard, null, null);
                 }
             }
@@ -1413,6 +1433,8 @@ namespace EndlessRooms.EditorSetup
                     r07Door.SetRequiredItem(items.IdCard, consume: false);
                     r07Door.RestoreState(new Door.DoorState(isOpen: false, isLocked: true));
                 }
+
+                AddFreeDrawer("R07", inventory);
             }
 
             // R08 — lore only (meeting-table room, no desk — moved the Cassette's drawer to R06, which has one).
@@ -1429,12 +1451,13 @@ namespace EndlessRooms.EditorSetup
                 GameObject bronzeGo = Level1ItemModelBuilder.BuildBronzeKey(r09, items.BronzeKey.DisplayName, pos, Quaternion.identity);
                 AddPickup(bronzeGo, items.BronzeKey);
                 BuildSpiderWeb(r09, r09Center, r09Side, inventory, items.BronzeKey, null, null, null);
+                AddFreeDrawer("R09", inventory);
             }
 
-            // R10 — red herring: a drawer that looks exactly like a real one (same desk-mounted tray) but has no LockableDrawer at all, so interacting does nothing — plus a note with a fake code. No clue web.
+            // R10 — red herring: an ordinary free drawer (opens fine, nothing inside) right next to a note with a fake code — the note is the actual misdirection now that every drawer opens, so a fake-locked drawer would've been the odd one out. No clue web.
             if (TryGetRoom("R10", out Transform r10, out Vector3 r10Center, out Side r10Side))
             {
-                BuildDeskDrawerTrayFor("R10", out _, out _);
+                AddFreeDrawer("R10", inventory);
 
                 Vector3 notePos = Level1Layout.LocalToWorld(r10Center, r10Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
                 SpawnLoreNote(r10, notePos, "Read Note", "A scrap taped to the desk: \"the code is 4471, don't forget it this time\" — someone's handwriting, but it doesn't look right somehow.");
@@ -1445,6 +1468,7 @@ namespace EndlessRooms.EditorSetup
             {
                 Vector3 pos = Level1Layout.LocalToWorld(r11Center, r11Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
                 SpawnLoreNote(r11, pos, "Read Note", "\"Almost to the stairwell. Whatever's been fixing this place, it's never once let anyone actually leave.\"");
+                AddFreeDrawer("R11", inventory);
             }
 
             // R12 — the keypad safe, holding the Golden Key.
@@ -1465,6 +1489,7 @@ namespace EndlessRooms.EditorSetup
                 safeSo.ApplyModifiedPropertiesWithoutUndo();
 
                 BuildSpiderWeb(r12, r12Center, r12Side, inventory, items.GoldenKey, null, uvCodeKnownGate, null);
+                AddFreeDrawer("R12", inventory);
             }
 
             // R13/R14 — bonus lore-only rooms at the ends of the cross arm.
@@ -1472,6 +1497,7 @@ namespace EndlessRooms.EditorSetup
             {
                 Vector3 pos = Level1Layout.LocalToWorld(r13Center, r13Side, new Vector3(0f, 0.865f, 0f));
                 SpawnLoreNote(r13, pos, "Read Note", "\"West stairwell's been sealed since before I started. Nobody says why.\"");
+                AddFreeDrawer("R13", inventory);
             }
 
             if (TryGetRoom("R14", out Transform r14, out Vector3 r14Center, out Side r14Side))
@@ -1562,6 +1588,19 @@ namespace EndlessRooms.EditorSetup
             contentRotation = tray.transform.rotation;
             contentWorldPosition = tray.transform.TransformPoint(new Vector3(0f, -0.1f, -0.15f));
             return tray;
+        }
+
+        /// <summary>Every desk gets a real, searchable drawer even where nothing's hidden in it — opens immediately on interact, no key needed.</summary>
+        private static void AddFreeDrawer(string roomId, Inventory inventory)
+        {
+            GameObject tray = BuildDeskDrawerTrayFor(roomId, out _, out _);
+            if (tray == null)
+            {
+                return;
+            }
+
+            var drawer = tray.AddComponent<LockableDrawer>();
+            drawer.Configure(null, false, null, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
         }
 
         private static GameObject BuildLoreNoteGameObject(Transform parent, Vector3 worldPosition, string promptLabel, string text)
@@ -1881,6 +1920,7 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>A row of icon+name slots along the bottom of the screen, with a highlighted box around the selected one — up to InventoryState.MaxItems slots, built once and shown/hidden as items come and go.</summary>
         private static void BuildInventoryHudUi(Inventory inventory, InventorySelectionController selectionController)
         {
             var canvasGo = new GameObject("InventoryHudCanvas");
@@ -1888,24 +1928,110 @@ namespace EndlessRooms.EditorSetup
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvasGo.AddComponent<CanvasScaler>();
 
-            var textGo = new GameObject("ItemListText", typeof(RectTransform), typeof(Text));
-            textGo.transform.SetParent(canvasGo.transform, false);
-            var text = textGo.GetComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.alignment = TextAnchor.LowerCenter;
-            text.color = Color.white;
-            text.fontSize = 16;
-            var textRect = textGo.GetComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0.1f, 0.02f);
-            textRect.anchorMax = new Vector2(0.9f, 0.1f);
-            textRect.sizeDelta = Vector2.zero;
+            var rowGo = new GameObject("SlotRow", typeof(RectTransform));
+            rowGo.transform.SetParent(canvasGo.transform, false);
+            var rowRect = rowGo.GetComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0.5f, 0f);
+            rowRect.anchorMax = new Vector2(0.5f, 0f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.anchoredPosition = new Vector2(0f, 16f);
+            rowRect.sizeDelta = new Vector2(InventoryState.MaxItems * 74f, 84f);
+
+            var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 6f;
+            layout.childAlignment = TextAnchor.LowerCenter;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            var slots = new InventoryHudSlot[InventoryState.MaxItems];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                slots[i] = BuildInventoryHudSlot(rowGo.transform, i);
+            }
 
             var hud = canvasGo.AddComponent<InventoryHudController>();
             var so = new SerializedObject(hud);
             so.FindProperty("_inventory").objectReferenceValue = inventory;
             so.FindProperty("_selection").objectReferenceValue = selectionController;
-            so.FindProperty("_listText").objectReferenceValue = text;
+
+            SerializedProperty slotsProp = so.FindProperty("_slots");
+            slotsProp.arraySize = slots.Length;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                SerializedProperty slotProp = slotsProp.GetArrayElementAtIndex(i);
+                slotProp.FindPropertyRelative("Root").objectReferenceValue = slots[i].Root;
+                slotProp.FindPropertyRelative("Icon").objectReferenceValue = slots[i].Icon;
+                slotProp.FindPropertyRelative("NameText").objectReferenceValue = slots[i].NameText;
+                slotProp.FindPropertyRelative("SelectionBox").objectReferenceValue = slots[i].SelectionBox;
+            }
+
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static InventoryHudSlot BuildInventoryHudSlot(Transform parent, int index)
+        {
+            var root = new GameObject($"Slot_{index}", typeof(RectTransform));
+            root.transform.SetParent(parent, false);
+            var layoutElement = root.AddComponent<LayoutElement>();
+            layoutElement.preferredWidth = 68f;
+            layoutElement.preferredHeight = 84f;
+
+            // Selection box: a bright frame behind the icon, only shown for the currently-selected slot.
+            var selectionGo = new GameObject("SelectionBox", typeof(RectTransform), typeof(Image));
+            selectionGo.transform.SetParent(root.transform, false);
+            var selectionRect = selectionGo.GetComponent<RectTransform>();
+            selectionRect.anchorMin = new Vector2(0.5f, 1f);
+            selectionRect.anchorMax = new Vector2(0.5f, 1f);
+            selectionRect.pivot = new Vector2(0.5f, 1f);
+            selectionRect.anchoredPosition = Vector2.zero;
+            selectionRect.sizeDelta = new Vector2(66f, 66f);
+            selectionGo.GetComponent<Image>().color = new Color(1f, 0.85f, 0.2f, 0.9f);
+            selectionGo.SetActive(false);
+
+            // Dark backdrop so the slot reads clearly even if an icon is missing/transparent.
+            var backgroundGo = new GameObject("Background", typeof(RectTransform), typeof(Image));
+            backgroundGo.transform.SetParent(root.transform, false);
+            var backgroundRect = backgroundGo.GetComponent<RectTransform>();
+            backgroundRect.anchorMin = new Vector2(0.5f, 1f);
+            backgroundRect.anchorMax = new Vector2(0.5f, 1f);
+            backgroundRect.pivot = new Vector2(0.5f, 1f);
+            backgroundRect.anchoredPosition = Vector2.zero;
+            backgroundRect.sizeDelta = new Vector2(60f, 60f);
+            backgroundGo.GetComponent<Image>().color = new Color(0.05f, 0.05f, 0.05f, 0.85f);
+
+            var iconGo = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconGo.transform.SetParent(backgroundGo.transform, false);
+            var iconRect = iconGo.GetComponent<RectTransform>();
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.sizeDelta = new Vector2(-8f, -8f);
+            var icon = iconGo.GetComponent<Image>();
+            icon.preserveAspect = true;
+
+            var nameGo = new GameObject("Name", typeof(RectTransform), typeof(Text));
+            nameGo.transform.SetParent(root.transform, false);
+            var nameRect = nameGo.GetComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0.5f, 0f);
+            nameRect.anchorMax = new Vector2(0.5f, 0f);
+            nameRect.pivot = new Vector2(0.5f, 0f);
+            nameRect.anchoredPosition = Vector2.zero;
+            nameRect.sizeDelta = new Vector2(68f, 18f);
+            var nameText = nameGo.GetComponent<Text>();
+            nameText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            nameText.alignment = TextAnchor.UpperCenter;
+            nameText.color = Color.white;
+            nameText.fontSize = 11;
+            nameText.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            root.SetActive(false);
+
+            return new InventoryHudSlot
+            {
+                Root = root,
+                Icon = icon,
+                NameText = nameText,
+                SelectionBox = selectionGo,
+            };
         }
 
         // ---------------------------------------------------------------- shared helpers

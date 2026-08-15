@@ -14,5 +14,6 @@ namespace EndlessRooms.Core
         public string ItemId;
         public string DisplayName;
         [TextArea] public string Description;
+        public Sprite Icon;
     }
 }

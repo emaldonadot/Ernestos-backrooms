@@ -45,6 +45,9 @@ namespace EndlessRooms.Core
         /// <summary>Raised by a <c>KeypadSafe</c> once a submitted code matches, so <c>KeypadEntryUI</c> can show a brief success state before closing.</summary>
         public static event Action KeypadUnlocked;
 
+        /// <summary>Raised by <c>InteractionCaster</c> whenever the currently-focused (looked-at) <see cref="IInteractable"/> changes, null when nothing's in view. Lets a World-layer target (e.g. <c>LockableDrawer</c>) know it's the one the player is looking at when they press UseItem, without World depending on Player.</summary>
+        public static event Action<IInteractable> InteractableFocusChanged;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -103,6 +106,11 @@ namespace EndlessRooms.Core
         public static void RaiseKeypadUnlocked()
         {
             KeypadUnlocked?.Invoke();
+        }
+
+        public static void RaiseInteractableFocusChanged(IInteractable focused)
+        {
+            InteractableFocusChanged?.Invoke(focused);
         }
     }
 }
