@@ -85,6 +85,33 @@ namespace EndlessRooms.Player
             HandleMovement();
         }
 
+        /// <summary>
+        /// Immediately snaps yaw and pitch to face a world point, bypassing mouse input
+        /// for one frame — used by AttendantController to force the camera toward the
+        /// Attendant at the moment of capture, the same two fields normal mouse look
+        /// (<see cref="HandleLook"/>) drives every frame.
+        /// </summary>
+        public void SnapLookAt(Vector3 worldPosition)
+        {
+            Vector3 eyePosition = _cameraPivot != null ? _cameraPivot.position : transform.position;
+            Vector3 toTarget = worldPosition - eyePosition;
+
+            Vector3 flatDirection = new(toTarget.x, 0f, toTarget.z);
+            if (flatDirection.sqrMagnitude > 0.0001f)
+            {
+                transform.rotation = Quaternion.LookRotation(flatDirection.normalized, Vector3.up);
+            }
+
+            float horizontalDistance = flatDirection.magnitude;
+            float verticalAngle = Mathf.Atan2(toTarget.y, horizontalDistance) * Mathf.Rad2Deg;
+            _verticalLookRotation = Mathf.Clamp(-verticalAngle, _config.MinPitch, _config.MaxPitch);
+
+            if (_cameraPivot != null)
+            {
+                _cameraPivot.localEulerAngles = new Vector3(_verticalLookRotation, 0f, 0f);
+            }
+        }
+
         private void HandleLook()
         {
             if (_lookAction == null || _cameraPivot == null)

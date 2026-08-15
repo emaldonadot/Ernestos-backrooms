@@ -28,6 +28,8 @@ namespace EndlessRooms.EditorSetup
         private const string MovementConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/PlayerMovementConfig.asset";
         private const string AttendantConfigPath = "Assets/TheEndlessRooms/ScriptableObjects/AttendantConfig.asset";
         private const string ScenePath = "Assets/TheEndlessRooms/Scenes/Milestone7_HorrorTestScene.unity";
+        private const string AttendantSpritePath = "Assets/TheEndlessRooms/Art/Textures/AttendantMonster.png";
+        private const float AttendantSpritePixelsPerUnit = 700f;
 
         public static void BuildScene()
         {
@@ -579,17 +581,24 @@ namespace EndlessRooms.EditorSetup
             var attendantGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             attendantGo.name = "TheAttendant";
             attendantGo.transform.position = playerTransform.position + new Vector3(-4f, 0f, -4f);
-            DebugColor.Apply(attendantGo, DebugColor.Attendant);
+
+            // The capsule's mesh was only ever a grey-box placeholder; the actual visible
+            // creature is now a billboard sprite (see BuildAttendantBillboard) so the
+            // capsule's own renderer is removed rather than tinted via DebugColor.
+            Object.DestroyImmediate(attendantGo.GetComponent<MeshRenderer>());
+            Object.DestroyImmediate(attendantGo.GetComponent<MeshFilter>());
 
             // The capsule primitive's own CapsuleCollider would double up with the
-            // CharacterController's capsule; keep the mesh for visibility, remove the
-            // primitive's collider so only the CharacterController drives movement/collision.
+            // CharacterController's capsule; remove the primitive's collider so only the
+            // CharacterController drives movement/collision.
             Object.DestroyImmediate(attendantGo.GetComponent<CapsuleCollider>());
 
             var characterController = attendantGo.AddComponent<CharacterController>();
             characterController.height = 1.8f;
             characterController.radius = 0.4f;
             characterController.center = new Vector3(0f, 0.9f, 0f);
+
+            BuildAttendantBillboard(attendantGo.transform);
 
             var eyes = new GameObject("Eyes").transform;
             eyes.SetParent(attendantGo.transform, false);
@@ -606,6 +615,32 @@ namespace EndlessRooms.EditorSetup
             so.FindProperty("_eyes").objectReferenceValue = eyes;
             so.FindProperty("_stateAudioSource").objectReferenceValue = audioSource;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// The Attendant's actual visible look — a transparent-background sprite on a
+        /// child quad that always faces the camera (see <see cref="BillboardSprite"/>),
+        /// rather than the capsule's own mesh. Swapping the art later (a different
+        /// ghost/monster image, or eventually a real 3D model) only means changing
+        /// <see cref="AttendantSpritePath"/>, not touching AttendantController at all.
+        /// </summary>
+        private static void BuildAttendantBillboard(Transform attendantTransform)
+        {
+            // BottomCenter alignment so the billboard's transform.position is at the
+            // creature's feet, matching the CharacterController's ground-level pivot.
+            Sprite sprite = EditorSpriteImportUtility.LoadOrImportSprite(AttendantSpritePath, AttendantSpritePixelsPerUnit, SpriteAlignment.BottomCenter);
+            if (sprite == null)
+            {
+                return;
+            }
+
+            var billboardGo = new GameObject("Billboard");
+            billboardGo.transform.SetParent(attendantTransform, false);
+            billboardGo.transform.localPosition = new Vector3(0f, 0f, 0f);
+
+            var spriteRenderer = billboardGo.AddComponent<SpriteRenderer>();
+            spriteRenderer.sprite = sprite;
+            billboardGo.AddComponent<BillboardSprite>();
         }
 
         private static void BuildInteractionPromptUi(InteractionCaster interactionCaster)

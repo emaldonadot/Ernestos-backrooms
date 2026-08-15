@@ -21,9 +21,17 @@ namespace EndlessRooms.World
         [SerializeField, Range(0f, 1f)] private float _dropoutChancePerSecond = 0.15f;
         [SerializeField] private float _dropoutDuration = 0.08f;
 
+        [Header("Intensified (e.g. Attendant warning/hunt cues)")]
+        [Tooltip("Multiplies jitter amount and dropout chance while SetIntensified(true) is active, on top of the always-on baseline flicker above.")]
+        [SerializeField] private float _intensifiedJitterMultiplier = 2.5f;
+        [SerializeField] private float _intensifiedDropoutMultiplier = 4f;
+        [Tooltip("Multiplies the base intensity itself while intensified, so the room reads as noticeably darker overall while the Attendant is near — not just more chaotic around the same average brightness.")]
+        [SerializeField, Range(0f, 1f)] private float _intensifiedBaseMultiplier = 0.4f;
+
         private Light _light;
         private float _dropoutTimer;
         private float _noiseSeed;
+        private bool _intensified;
 
         private void Awake()
         {
@@ -35,8 +43,32 @@ namespace EndlessRooms.World
             }
         }
 
+        /// <summary>Defensive reset in case something disables this component outright (e.g. scene tooling) — snaps back to a clean intensity instead of staying stuck dim/dark.</summary>
+        private void OnDisable()
+        {
+            if (_light != null)
+            {
+                _light.intensity = _baseIntensity;
+            }
+        }
+
+        /// <summary>
+        /// Toggled by <see cref="AttendantAppearanceController"/> during its Warning and
+        /// Hunting phases — the corridor lights flicker gently all the time as ambient
+        /// atmosphere, but noticeably harder in the few seconds before the Attendant
+        /// appears and for as long as it's actively present.
+        /// </summary>
+        public void SetIntensified(bool intensified)
+        {
+            _intensified = intensified;
+        }
+
         private void Update()
         {
+            float baseIntensity = _intensified ? _baseIntensity * _intensifiedBaseMultiplier : _baseIntensity;
+            float jitterAmount = _intensified ? _jitterAmount * _intensifiedJitterMultiplier : _jitterAmount;
+            float dropoutChance = _intensified ? _dropoutChancePerSecond * _intensifiedDropoutMultiplier : _dropoutChancePerSecond;
+
             if (_dropoutTimer > 0f)
             {
                 _dropoutTimer -= Time.deltaTime;
@@ -44,7 +76,7 @@ namespace EndlessRooms.World
                 return;
             }
 
-            if (Random.value < _dropoutChancePerSecond * Time.deltaTime)
+            if (Random.value < dropoutChance * Time.deltaTime)
             {
                 _dropoutTimer = _dropoutDuration;
                 _light.intensity = 0f;
@@ -52,7 +84,7 @@ namespace EndlessRooms.World
             }
 
             float noise = Mathf.PerlinNoise(_noiseSeed, Time.time * _jitterSpeed) * 2f - 1f;
-            _light.intensity = Mathf.Max(0f, _baseIntensity + noise * _jitterAmount * _baseIntensity);
+            _light.intensity = Mathf.Max(0f, baseIntensity + noise * jitterAmount * baseIntensity);
         }
     }
 }

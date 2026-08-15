@@ -22,5 +22,5 @@ MonoBehaviour:
   WaypointArrivalRadius: 0.75
   InvestigateDurationSeconds: 6
   SearchDurationSeconds: 8
-  CaptureRangeMeters: 1.2
+  CaptureRangeMeters: 1.8
   TerritoryRoomRadius: 3

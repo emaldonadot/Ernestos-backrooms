@@ -27,6 +27,12 @@ namespace EndlessRooms.Core
         /// <summary>Raised by a <c>FieldNote</c> (World) on interact, carrying its text fragment. <c>FieldNoteUI</c> (UI) displays it — decoupled the same way as RoomEntered/LevelCompleted, so EndlessRooms.UI has no dependency on EndlessRooms.World.</summary>
         public static event Action<string> FieldNoteOpened;
 
+        /// <summary>Raised with the selected inventory item's <see cref="InventoryItemDefinition.ItemId"/> when the player presses UseItem — item-specific behavior (PlayerFlashlight, PlayerUvFlashlight, CassetteMessagePlayer) lives on whichever component owns that reaction, not here.</summary>
+        public static event Action<string> ItemUseRequested;
+
+        /// <summary>Raised by <c>PlayerUvFlashlight</c> whenever its beam turns on/off — a world prop with a UV-only hidden clue reacts to this rather than referencing the Player component directly.</summary>
+        public static event Action<bool> UvLightToggled;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -55,6 +61,16 @@ namespace EndlessRooms.Core
         public static void RaiseFieldNoteOpened(string fragmentText)
         {
             FieldNoteOpened?.Invoke(fragmentText);
+        }
+
+        public static void RaiseItemUseRequested(string itemId)
+        {
+            ItemUseRequested?.Invoke(itemId);
+        }
+
+        public static void RaiseUvLightToggled(bool isOn)
+        {
+            UvLightToggled?.Invoke(isOn);
         }
     }
 }

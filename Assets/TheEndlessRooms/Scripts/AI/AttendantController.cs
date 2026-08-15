@@ -35,6 +35,7 @@ namespace EndlessRooms.AI
         private AttendantStateMachine _stateMachine;
         private IDetectable _target;
         private CameraShakeEffect _targetCameraShake;
+        private PlayerController _targetPlayerController;
         private readonly System.Random _rng = new();
 
         private Guid _homeNodeId;
@@ -77,6 +78,10 @@ namespace EndlessRooms.AI
             GameObject playerGo = GameObject.FindGameObjectWithTag("Player");
             _target = playerGo != null ? playerGo.GetComponentInChildren<IDetectable>() : null;
             _targetCameraShake = playerGo != null ? playerGo.GetComponentInChildren<CameraShakeEffect>() : null;
+            // Null for VR rigs (no PlayerController there) — forcing a VR camera to snap
+            // to a direction the player didn't choose is disorienting/nausea-inducing, so
+            // the capture look-snap below is PC-only by construction, not an oversight.
+            _targetPlayerController = playerGo != null ? playerGo.GetComponentInChildren<PlayerController>() : null;
 
             if (_levelBuilder != null)
             {
@@ -88,9 +93,24 @@ namespace EndlessRooms.AI
             }
         }
 
+        private bool _hasBeenEnabledBefore;
+
         private void OnEnable()
         {
             EnsureInitialized();
+
+            // EnsureInitialized's own door-subscription (via OnLevelBuilt) only ever
+            // runs on the very first OnEnable — fine when a level only builds once, but
+            // Milestone 9's AttendantAppearanceController disables/re-enables this
+            // GameObject repeatedly to make the Attendant appear and disappear, and
+            // OnDisable always unsubscribes. Without this, "investigates recently opened
+            // doors" would silently stop working after the first disable/enable cycle.
+            if (_hasBeenEnabledBefore)
+            {
+                SubscribeToDoors();
+            }
+
+            _hasBeenEnabledBefore = true;
         }
 
         private void OnDisable()
@@ -117,7 +137,24 @@ namespace EndlessRooms.AI
             _homeNodeId = nearEntry.Count > 1 ? nearEntry[1] : nearEntry[0];
             _currentPatrolNodeId = _homeNodeId;
 
-            if (_levelBuilder.TryGetRoomWorldPosition(_homeNodeId, out Vector3 homePosition))
+            ResetToHomePosition();
+
+            UnsubscribeFromDoors();
+            SubscribeToDoors();
+        }
+
+        /// <summary>
+        /// Teleports back to its home node, clears any in-progress path, and starts a
+        /// fresh state machine (so it's always back in Patrol, never stuck resuming
+        /// whatever state it was in before) — the logic <see cref="OnLevelBuilt"/> always
+        /// ran once at level start, now also reusable by
+        /// <c>AttendantAppearanceController</c> every time the Attendant reappears after
+        /// being hidden, so every hunt starts from the same clean spawn instead of
+        /// wherever it physically stopped when it last vanished.
+        /// </summary>
+        public void ResetToHomePosition()
+        {
+            if (_levelBuilder != null && _levelBuilder.TryGetRoomWorldPosition(_homeNodeId, out Vector3 homePosition))
             {
                 _characterController.enabled = false;
                 transform.position = homePosition;
@@ -128,9 +165,7 @@ namespace EndlessRooms.AI
             _waypointIndex = 0;
             _unstickTimer = 0f;
             ResetStuckTracking();
-
-            UnsubscribeFromDoors();
-            SubscribeToDoors();
+            _stateMachine = new AttendantStateMachine(_config);
         }
 
         private void SubscribeToDoors()
@@ -439,6 +474,7 @@ namespace EndlessRooms.AI
 
             if (distance <= _config.CaptureRangeMeters)
             {
+                _targetPlayerController?.SnapLookAt(_eyes != null ? _eyes.position : transform.position);
                 GameEvents.RaisePlayerCaptured();
                 ResetAfterCapture();
             }
