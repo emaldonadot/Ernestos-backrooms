@@ -16,6 +16,8 @@ namespace EndlessRooms.UI
         [SerializeField] private Text _promptText;
         [SerializeField] private GameObject _promptRoot;
 
+        private IInteractable _focused;
+
         private void OnEnable()
         {
             if (_interactionCaster != null)
@@ -34,20 +36,38 @@ namespace EndlessRooms.UI
             }
         }
 
+        private void Update()
+        {
+            // FocusChanged only fires when the focused *object reference* changes — a
+            // HidingSpot's Hide/Come Out or a LockableDrawer's Locked/Use-X-To-Open text
+            // changes while the player keeps looking at the same object, so the prompt
+            // needs its own per-frame refresh instead of only reacting to that event.
+            if (_focused != null)
+            {
+                RefreshText();
+            }
+        }
+
         private void HandleFocusChanged(IInteractable interactable)
         {
+            _focused = interactable;
+
             if (interactable == null)
             {
                 SetVisible(false);
                 return;
             }
 
-            if (_promptText != null)
-            {
-                _promptText.text = interactable.GetInteractionPrompt();
-            }
-
+            RefreshText();
             SetVisible(true);
+        }
+
+        private void RefreshText()
+        {
+            if (_promptText != null && _focused != null)
+            {
+                _promptText.text = _focused.GetInteractionPrompt();
+            }
         }
 
         private void SetVisible(bool visible)

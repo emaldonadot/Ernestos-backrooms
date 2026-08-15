@@ -633,27 +633,39 @@ namespace EndlessRooms.EditorSetup
         private static Material GetOrCreateWindowFrameMaterial()
         {
             const string path = "Assets/TheEndlessRooms/Art/Materials/WindowFrame_Level1.mat";
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null)
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            bool isNew = material == null;
+            if (isNew)
             {
-                return existing;
+                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             }
 
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            {
-                color = new Color(0.09f, 0.09f, 0.1f),
-            };
-            material.SetFloat("_Smoothness", 0.4f);
-            material.SetFloat("_Metallic", 0.3f);
+            // Brushed-aluminum look — lighter and considerably more metallic/glossy than
+            // the original near-black, barely-metallic value, which read as flat plastic
+            // rather than an actual window frame.
+            material.color = new Color(0.62f, 0.63f, 0.66f);
+            material.SetFloat("_Smoothness", 0.75f);
+            material.SetFloat("_Metallic", 0.85f);
 
-            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
-            AssetDatabase.CreateAsset(material, path);
+            if (isNew)
+            {
+                EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else
+            {
+                EditorUtility.SetDirty(material);
+            }
+
             return material;
         }
 
         private static Material GetOrCreateWindowGlassMaterial()
         {
-            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.5f));
+            // 0.3 -> 0.5 wasn't actually visible in play since GetOrCreateUnlitTransparentMaterial
+            // used to only apply color on first creation (fixed) — 0.14 is a real "barely
+            // there" pane the player can actually see the night sky through.
+            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.14f));
         }
 
         /// <summary>
@@ -736,7 +748,9 @@ namespace EndlessRooms.EditorSetup
                 AddHidingSpot(desk);
                 _officeDeskDrawerAnchors[spec.Id] = drawerAnchor;
 
-                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.7f, floorY, 0f));
+                // Tucked in closer to the desk than before (-0.7 -> -0.55) to free up
+                // walking space between the chair and the back wall/closet.
+                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.55f, floorY, 0f));
                 Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(intoRoomFromBackWall));
             }
 
@@ -793,9 +807,34 @@ namespace EndlessRooms.EditorSetup
             CreateBlockWorld(roomGo.transform, "Wall_SideA", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
             CreateBlockWorld(roomGo.transform, "Wall_SideB", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, -Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
 
-            AddFurniture(roomGo.transform, "PlanterPlaceholder", Level1Layout.LocalToWorld(center, side, new Vector3(-1.8f, 0.3f, 0f)), new Vector3(0.8f, 0.6f, 0.8f), hideable: false);
+            BuildCourtyardPlanters(roomGo.transform, center, side);
 
             return BuildCourtyardRain(roomGo.transform, center);
+        }
+
+        /// <summary>Three planters per courtyard against its three solid walls (the fourth side is the open corridor-facing edge) — alternates which of the two real planter models (see Level1PlanterBuilder) leads on each side so the six end up split evenly.</summary>
+        private static void BuildCourtyardPlanters(Transform room, Vector3 center, Side side)
+        {
+            Vector3 backPos = Level1Layout.LocalToWorld(center, side, new Vector3(-2.2f, WallThickness / 2f, 0f));
+            Vector3 sideAPos = Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallThickness / 2f, 2.6f));
+            Vector3 sideBPos = Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallThickness / 2f, -2.6f));
+
+            Quaternion faceIntoRoom = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.right));
+            Quaternion faceFromSideA = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.back));
+            Quaternion faceFromSideB = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.forward));
+
+            if (side == Side.West)
+            {
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_Back", backPos, faceIntoRoom);
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_SideA", sideAPos, faceFromSideA);
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_SideB", sideBPos, faceFromSideB);
+            }
+            else
+            {
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_Back", backPos, faceIntoRoom);
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_SideA", sideAPos, faceFromSideA);
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_SideB", sideBPos, faceFromSideB);
+            }
         }
 
         /// <summary>Off by default (playOnAwake=false, never .Play()'d here) — AttendantAppearanceController starts/stops it alongside its existing light-intensifying calls during Warning/Hunting.</summary>
@@ -1586,7 +1625,14 @@ namespace EndlessRooms.EditorSetup
 
             GameObject tray = Level1FurnitureBuilder.BuildDeskDrawerTray(anchor, "LockedDrawer");
             contentRotation = tray.transform.rotation;
-            contentWorldPosition = tray.transform.TransformPoint(new Vector3(0f, -0.1f, -0.15f));
+            // Above the Front panel's top edge (frontHeight 0.26, so +-0.13) and a
+            // touch proud of its face (+Z) — sitting "behind" the front at the same
+            // height it occupies (the original placement) meant the front panel's own
+            // collider occluded/out-raced the item's for both raycasts and the eye,
+            // whether the drawer was open or closed, since opening just slides the whole
+            // assembly (front + item) forward together without changing their relative
+            // position to each other.
+            contentWorldPosition = tray.transform.TransformPoint(new Vector3(0f, 0.2f, 0.03f));
             return tray;
         }
 
@@ -2035,15 +2081,6 @@ namespace EndlessRooms.EditorSetup
         }
 
         // ---------------------------------------------------------------- shared helpers
-
-        private static void AddFurniture(Transform parent, string name, Vector3 worldPosition, Vector3 size, bool hideable)
-        {
-            GameObject furniture = CreateBlockWorld(parent, name, worldPosition, size);
-            if (hideable)
-            {
-                furniture.AddComponent<HidingSpot>();
-            }
-        }
 
         /// <summary>Adds a HidingSpot to a Level1FurnitureBuilder model, wiring its "HideAnchor" child (see BuildDesk/BuildCloset) as the camera teleport target if one exists.</summary>
         private static void AddHidingSpot(GameObject furnitureRoot)

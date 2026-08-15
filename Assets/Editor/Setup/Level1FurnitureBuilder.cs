@@ -227,7 +227,12 @@ namespace EndlessRooms.EditorSetup
         /// <paramref name="interactiveDrawerAnchor"/> deliberately faces the opposite way
         /// (local -Z, i.e. the desk's front/door-facing side) since a real interactive
         /// drawer needs to be reachable from where the player actually walks up, not
-        /// from the chair side. Its own local +Z is the "slide open" direction.
+        /// from the chair side. On the right-hand pedestal (opposite the decorative
+        /// fronts' left-first convention), standing proud of the pedestal face by a full
+        /// 8cm rather than the decorative fronts' near-flush 5mm — a raycast/SphereCast
+        /// aimed at a drawer that's nearly coplanar with the pedestal's own big collider
+        /// was hitting the pedestal instead more often than not. Its own local +Z is the
+        /// "slide open" direction.
         /// </summary>
         internal static GameObject BuildDesk(Transform parent, string name, Vector3 worldPosition, Quaternion rotation, out Transform interactiveDrawerAnchor)
         {
@@ -277,7 +282,7 @@ namespace EndlessRooms.EditorSetup
 
             var anchorGo = new GameObject("InteractiveDrawerAnchor");
             anchorGo.transform.SetParent(root.transform, false);
-            anchorGo.transform.localPosition = new Vector3(-pedestalX, drawerCenters[0], -pedestalFaceZ);
+            anchorGo.transform.localPosition = new Vector3(pedestalX, drawerCenters[0], -(pedestalFaceZ + 0.08f));
             anchorGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             interactiveDrawerAnchor = anchorGo.transform;
 
@@ -480,7 +485,11 @@ namespace EndlessRooms.EditorSetup
 
             Part(tray.transform, "Front", new Vector3(0f, 0f, 0f), new Vector3(width, frontHeight, 0.014f));
             Part(tray.transform, "Handle", new Vector3(0f, 0f, 0.022f), new Vector3(0.12f, 0.02f, 0.03f), SafeMetalMaterial);
-            Part(tray.transform, "Floor", new Vector3(0f, -frontHeight / 2f + 0.006f, -trayDepth / 2f), new Vector3(width - 0.02f, 0.012f, trayDepth));
+            // Named "Bottom", not "Floor" — Milestone9Level1AssetBuilder.ApplyLevel1Materials
+            // name-matches any Transform called "Floor" anywhere in the whole level
+            // hierarchy and recolors it with the carpet material, which is exactly what
+            // was happening to this part before the rename.
+            Part(tray.transform, "Bottom", new Vector3(0f, -frontHeight / 2f + 0.006f, -trayDepth / 2f), new Vector3(width - 0.02f, 0.012f, trayDepth));
 
             return tray;
         }
