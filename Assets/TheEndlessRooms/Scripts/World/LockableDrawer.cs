@@ -7,14 +7,15 @@ namespace EndlessRooms.World
     /// <summary>
     /// A desk/cabinet drawer. With no <see cref="_requiredItem"/> configured it just
     /// opens on interact (every desk gets one of these so every drawer in the level is
-    /// genuinely searchable). With one configured, interacting never unlocks it
-    /// directly — it only ever reports whether a key is needed: pressing Interact
-    /// always just gives feedback (a generic "needs a key" if the player doesn't have
-    /// it yet, or the specific item name once they do), and the real unlock happens by
-    /// selecting that item in the inventory and pressing UseItem while this drawer is
-    /// the focused interactable. That two-step matches how the UV Flashlight/Battery
-    /// and Cassette/Recorder combos already work — a key is "used on" a lock, not
-    /// auto-consumed just by being carried near it.
+    /// genuinely searchable). With one configured, a locked drawer never unlocks just
+    /// from being carried near it — pressing Interact (E) while the correct item is
+    /// *selected* unlocks it directly (the common case, so E keeps working as the one
+    /// button for everything), and pressing UseItem (F) while this drawer is focused
+    /// also works for players who select the item first and then use it explicitly.
+    /// Both paths share the same unlock check; the only difference is Interact requires
+    /// the item to be selected (since Interact already implies focus) while UseItem
+    /// requires focus but not selection to already match at press time (either order
+    /// works: select-then-interact, or interact-to-see-the-message-then-select-then-use).
     /// Optionally slides <see cref="_slidingPart"/> open along its own local +Z (matching
     /// <c>Level1FurnitureBuilder.BuildDeskDrawerTray</c>'s convention) so the unlock is
     /// visible, not just a state flag — <see cref="_revealedContent"/> is expected to be
@@ -37,6 +38,7 @@ namespace EndlessRooms.World
 
         private Vector3 _closedLocalPosition;
         private bool _isFocused;
+        private string _selectedItemId = "";
 
         public bool IsUnlocked { get; private set; }
 
@@ -81,6 +83,7 @@ namespace EndlessRooms.World
         private void OnEnable()
         {
             GameEvents.InteractableFocusChanged += HandleFocusChanged;
+            GameEvents.SelectedItemChanged += HandleSelectedItemChanged;
             GameEvents.ItemUseRequested += HandleItemUseRequested;
 
             if (GameServices.TryGet<SaveableRegistry>(out var registry))
@@ -92,6 +95,7 @@ namespace EndlessRooms.World
         private void OnDisable()
         {
             GameEvents.InteractableFocusChanged -= HandleFocusChanged;
+            GameEvents.SelectedItemChanged -= HandleSelectedItemChanged;
             GameEvents.ItemUseRequested -= HandleItemUseRequested;
 
             if (GameServices.TryGet<SaveableRegistry>(out var registry))
@@ -132,7 +136,7 @@ namespace EndlessRooms.World
             return !IsUnlocked;
         }
 
-        /// <summary>A free (no key needed) drawer opens immediately; a locked one only ever reports what's needed here — see the class doc comment for why unlocking itself goes through UseItem instead.</summary>
+        /// <summary>A free (no key needed) drawer opens immediately. A locked one first tries unlocking with whatever's currently selected (so Interact alone opens it once the right key is selected); failing that, it just reports what's needed.</summary>
         public void Interact(InteractionContext context)
         {
             if (IsUnlocked)
@@ -143,6 +147,11 @@ namespace EndlessRooms.World
             if (_requiredItem == null)
             {
                 Unlock();
+                return;
+            }
+
+            if (TryUnlockWithItem(_selectedItemId, requireFocus: false))
+            {
                 return;
             }
 
@@ -158,15 +167,25 @@ namespace EndlessRooms.World
             _isFocused = ReferenceEquals(focused, this);
         }
 
+        private void HandleSelectedItemChanged(string itemId)
+        {
+            _selectedItemId = itemId ?? "";
+        }
+
         private void HandleItemUseRequested(string itemId)
         {
             TryUnlockWithUsedItem(itemId);
         }
 
-        /// <summary>The actual unlock path — public so it's directly testable without needing GameEvents.ItemUseRequested subscriptions to have fired (OnEnable never runs in headless Editor scripting or EditMode tests).</summary>
+        /// <summary>The UseItem-while-focused unlock path — public so it's directly testable without needing GameEvents.ItemUseRequested subscriptions to have fired (OnEnable never runs in headless Editor scripting or EditMode tests).</summary>
         public bool TryUnlockWithUsedItem(string itemId)
         {
-            if (IsUnlocked || !_isFocused || _requiredItem == null || itemId != _requiredItem.ItemId)
+            return TryUnlockWithItem(itemId, requireFocus: true);
+        }
+
+        private bool TryUnlockWithItem(string itemId, bool requireFocus)
+        {
+            if (IsUnlocked || (requireFocus && !_isFocused) || _requiredItem == null || itemId != _requiredItem.ItemId)
             {
                 return false;
             }
@@ -189,6 +208,12 @@ namespace EndlessRooms.World
         public void SetFocused(bool isFocused)
         {
             _isFocused = isFocused;
+        }
+
+        /// <summary>Test/placement-time hook for selection, mirroring how InventorySelectionController broadcasts it in real play.</summary>
+        public void SetSelectedItemId(string itemId)
+        {
+            _selectedItemId = itemId ?? "";
         }
 
         private void Unlock()

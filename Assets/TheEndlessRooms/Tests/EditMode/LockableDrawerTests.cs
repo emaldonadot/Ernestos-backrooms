@@ -50,7 +50,7 @@ namespace EndlessRooms.Tests.EditMode
         }
 
         [Test]
-        public void Interact_LockedWithRequiredItemInInventory_StillDoesNotUnlock()
+        public void Interact_LockedWithRequiredItemInInventoryButNotSelected_StillDoesNotUnlock()
         {
             InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
             (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
@@ -58,7 +58,44 @@ namespace EndlessRooms.Tests.EditMode
 
             drawer.Interact(new InteractionContext(playerGo));
 
-            Assert.IsFalse(drawer.IsUnlocked, "Carrying the key should not be enough — it has to be used, not just held.");
+            Assert.IsFalse(drawer.IsUnlocked, "Carrying the key should not be enough — it has to be selected and used, not just held.");
+            Assert.IsFalse(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void Interact_LockedWithRequiredItemSelected_UnlocksDirectly()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
+            drawer.SetSelectedItemId("bronze_key");
+
+            drawer.Interact(new InteractionContext(playerGo));
+
+            Assert.IsTrue(drawer.IsUnlocked, "Interact should unlock directly once the matching key is selected — the same button used for everything else in the game.");
+            Assert.IsFalse(inventory.HasItem("bronze_key"));
+            Assert.IsTrue(content.activeSelf);
+
+            Object.DestroyImmediate(drawerGo);
+            Object.DestroyImmediate(playerGo);
+        }
+
+        [Test]
+        public void Interact_LockedWithWrongItemSelected_StaysLocked()
+        {
+            InventoryItemDefinition item = MakeItem("bronze_key", "Bronze Key");
+            var wrongItem = MakeItem("golden_key", "Golden Key");
+            (GameObject drawerGo, LockableDrawer drawer, GameObject content, Inventory inventory, GameObject playerGo) = MakeLockedDrawer(item, consume: true);
+            inventory.TryAddItem(item);
+            inventory.TryAddItem(wrongItem);
+            drawer.SetSelectedItemId("golden_key");
+
+            drawer.Interact(new InteractionContext(playerGo));
+
+            Assert.IsFalse(drawer.IsUnlocked);
             Assert.IsFalse(content.activeSelf);
 
             Object.DestroyImmediate(drawerGo);

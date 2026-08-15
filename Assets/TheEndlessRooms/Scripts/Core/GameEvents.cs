@@ -48,6 +48,9 @@ namespace EndlessRooms.Core
         /// <summary>Raised by <c>InteractionCaster</c> whenever the currently-focused (looked-at) <see cref="IInteractable"/> changes, null when nothing's in view. Lets a World-layer target (e.g. <c>LockableDrawer</c>) know it's the one the player is looking at when they press UseItem, without World depending on Player.</summary>
         public static event Action<IInteractable> InteractableFocusChanged;
 
+        /// <summary>Raised by <c>InventorySelectionController</c> whenever the selected inventory slot changes, carrying the newly-selected item's <see cref="InventoryItemDefinition.ItemId"/> (empty string if nothing's selected). Lets a World-layer target (e.g. <c>LockableDrawer</c>) know what's currently selected — same World/Player decoupling reason as <see cref="InteractableFocusChanged"/> — so pressing the ordinary Interact button while holding the right key selected can unlock a lock directly, not just UseItem.</summary>
+        public static event Action<string> SelectedItemChanged;
+
         public static void RaiseInteractionPerformed(GameObject instigator, IInteractable target)
         {
             InteractionPerformed?.Invoke(instigator, target);
@@ -111,6 +114,11 @@ namespace EndlessRooms.Core
         public static void RaiseInteractableFocusChanged(IInteractable focused)
         {
             InteractableFocusChanged?.Invoke(focused);
+        }
+
+        public static void RaiseSelectedItemChanged(string itemId)
+        {
+            SelectedItemChanged?.Invoke(itemId ?? string.Empty);
         }
     }
 }
