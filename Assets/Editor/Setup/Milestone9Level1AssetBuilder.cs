@@ -1520,8 +1520,13 @@ namespace EndlessRooms.EditorSetup
             // R12 — the keypad safe, holding the Golden Key.
             if (TryGetRoom("R12", out Transform r12, out Vector3 r12Center, out Side r12Side))
             {
-                Vector3 safePos = Level1Layout.LocalToWorld(r12Center, r12Side, new Vector3(1.3f, WallThickness / 2f, 0f));
-                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r12Side, Vector3.right));
+                // Hugging the +Z side wall near the desk's own depth, not the aisle
+                // spot (1.3, _, 0) used for small pickups elsewhere — that put a
+                // 0.42x0.45x0.4m safe squarely in the walk from the door to the desk.
+                // R12's bookshelf already owns the +Z wall's back corner (-1.85, _, 2.7),
+                // so this sits further toward the door at a different depth, clear of it.
+                Vector3 safePos = Level1Layout.LocalToWorld(r12Center, r12Side, new Vector3(0.3f, WallThickness / 2f, 2.6f));
+                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r12Side, Vector3.back));
                 GameObject safeGo = Level1FurnitureBuilder.BuildKeypadSafe(r12, "KeypadSafe", safePos, facing);
 
                 GameObject goldenGo = Level1ItemModelBuilder.BuildGoldenKey(safeGo.transform, items.GoldenKey.DisplayName, safePos + facing * new Vector3(0f, 0.3f, 0.3f), facing);

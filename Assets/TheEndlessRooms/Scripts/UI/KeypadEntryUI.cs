@@ -24,6 +24,12 @@ namespace EndlessRooms.UI
         private readonly StringBuilder _digits = new();
         private bool _isOpen;
 
+        // Same fix as FieldNoteUI: the Interact press that opens this panel (via
+        // InteractionCaster -> KeypadSafe.Interact -> GameEvents.KeypadOpened) also
+        // fires _dismissAction.performed on that same underlying action in the same
+        // synchronous dispatch — without this, the panel closed itself the instant it opened.
+        private bool _justOpened;
+
         private void OnEnable()
         {
             GameEvents.KeypadOpened += HandleKeypadOpened;
@@ -94,6 +100,7 @@ namespace EndlessRooms.UI
             _digits.Clear();
             Refresh();
             SetVisible(true);
+            _justOpened = true;
         }
 
         private void HandleKeypadUnlocked()
@@ -103,6 +110,12 @@ namespace EndlessRooms.UI
 
         private void HandleDismiss(InputAction.CallbackContext context)
         {
+            if (_justOpened)
+            {
+                _justOpened = false;
+                return;
+            }
+
             SetVisible(false);
         }
 

@@ -17,6 +17,13 @@ namespace EndlessRooms.UI
         [SerializeField] private GameObject _panelRoot;
         [SerializeField] private InputActionReference _dismissAction;
 
+        // The same Interact press that opens the note (via InteractionCaster ->
+        // FieldNote.Interact -> GameEvents.FieldNoteOpened) also fires this component's
+        // own _dismissAction.performed subscription on the *same* underlying
+        // InputAction, in the same synchronous dispatch — without this guard, opening a
+        // note also immediately closed it again before the player ever saw it.
+        private bool _justOpened;
+
         private void OnEnable()
         {
             GameEvents.FieldNoteOpened += HandleFieldNoteOpened;
@@ -49,10 +56,17 @@ namespace EndlessRooms.UI
             }
 
             SetVisible(true);
+            _justOpened = true;
         }
 
         private void HandleDismiss(InputAction.CallbackContext context)
         {
+            if (_justOpened)
+            {
+                _justOpened = false;
+                return;
+            }
+
             SetVisible(false);
         }
 
