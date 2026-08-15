@@ -279,18 +279,18 @@ namespace EndlessRooms.EditorSetup
             root.transform.SetParent(parent, true);
             root.transform.SetPositionAndRotation(worldPosition, rotation);
 
-            webOnlyVisual = Box(root.transform, "WebOnly", Vector3.zero, new Vector3(0.22f, 0.22f, 0.006f), WebMaterial);
+            webOnlyVisual = Box(root.transform, "WebOnly", Vector3.zero, new Vector3(0.4f, 0.4f, 0.008f), WebMaterial);
             webOnlyVisual.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
 
             var spiderRoot = new GameObject("Spider");
             spiderRoot.transform.SetParent(root.transform, false);
-            spiderRoot.transform.localPosition = new Vector3(0f, 0f, 0.006f);
-            Box(spiderRoot.transform, "Body", Vector3.zero, new Vector3(0.03f, 0.02f, 0.018f), SpiderMaterial);
+            spiderRoot.transform.localPosition = new Vector3(0f, 0f, 0.008f);
+            Box(spiderRoot.transform, "Body", Vector3.zero, new Vector3(0.05f, 0.035f, 0.03f), SpiderMaterial);
             for (int i = 0; i < 3; i++)
             {
                 float t = (i - 1) * 20f;
-                Box(spiderRoot.transform, "Leg", new Vector3(-0.025f, 0f, 0f), new Vector3(0.03f, 0.004f, 0.004f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, t);
-                Box(spiderRoot.transform, "Leg", new Vector3(0.025f, 0f, 0f), new Vector3(0.03f, 0.004f, 0.004f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, 180f - t);
+                Box(spiderRoot.transform, "Leg", new Vector3(-0.04f, 0f, 0f), new Vector3(0.05f, 0.007f, 0.007f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, t);
+                Box(spiderRoot.transform, "Leg", new Vector3(0.04f, 0f, 0f), new Vector3(0.05f, 0.007f, 0.007f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, 180f - t);
             }
 
             spiderVisual = spiderRoot;

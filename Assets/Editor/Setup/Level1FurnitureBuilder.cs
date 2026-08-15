@@ -221,8 +221,15 @@ namespace EndlessRooms.EditorSetup
             return root;
         }
 
-        /// <summary>Local +Z faces away from the desk's back edge (where a chair would sit) — drawer fronts face this direction.</summary>
-        internal static GameObject BuildDesk(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        /// <summary>
+        /// Local +Z faces away from the desk's back edge (where a chair would sit) —
+        /// the decorative drawer fronts face this direction, but
+        /// <paramref name="interactiveDrawerAnchor"/> deliberately faces the opposite way
+        /// (local -Z, i.e. the desk's front/door-facing side) since a real interactive
+        /// drawer needs to be reachable from where the player actually walks up, not
+        /// from the chair side. Its own local +Z is the "slide open" direction.
+        /// </summary>
+        internal static GameObject BuildDesk(Transform parent, string name, Vector3 worldPosition, Quaternion rotation, out Transform interactiveDrawerAnchor)
         {
             const float width = 1.60f;
             const float depth = 0.80f;
@@ -267,6 +274,12 @@ namespace EndlessRooms.EditorSetup
             var hideAnchor = new GameObject("HideAnchor");
             hideAnchor.transform.SetParent(root.transform, false);
             hideAnchor.transform.localPosition = new Vector3(0f, -1.0f, 0.15f);
+
+            var anchorGo = new GameObject("InteractiveDrawerAnchor");
+            anchorGo.transform.SetParent(root.transform, false);
+            anchorGo.transform.localPosition = new Vector3(-pedestalX, drawerCenters[0], -pedestalFaceZ);
+            anchorGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            interactiveDrawerAnchor = anchorGo.transform;
 
             return root;
         }
@@ -449,24 +462,27 @@ namespace EndlessRooms.EditorSetup
             return root;
         }
 
-        /// <summary>A standalone lockable drawer unit — local +Z is the drawer-front face.</summary>
-        internal static GameObject BuildLockableDrawerCabinet(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        /// <summary>
+        /// A real openable drawer sized to sit in a desk's own drawer slot (see
+        /// BuildDesk.InteractiveDrawerAnchor) rather than a standalone floor cabinet —
+        /// the anchor's local +Z is "slide open". Front is flush with the desk (closed
+        /// look matches the decorative fronts); Floor is what an unlocked item ends up
+        /// visibly resting on once it's slid out.
+        /// </summary>
+        internal static GameObject BuildDeskDrawerTray(Transform anchor, string name)
         {
-            const float width = 0.42f;
-            const float height = 0.52f;
-            const float depth = 0.46f;
+            const float width = 0.36f;
+            const float frontHeight = 0.26f;
+            const float trayDepth = 0.3f;
 
-            var root = new GameObject(name);
-            root.transform.SetParent(parent, true);
-            root.transform.SetPositionAndRotation(worldPosition, rotation);
+            var tray = new GameObject(name);
+            tray.transform.SetParent(anchor, false);
 
-            Part(root.transform, "Body", new Vector3(0f, height / 2f, 0f), new Vector3(width, height, depth));
+            Part(tray.transform, "Front", new Vector3(0f, 0f, 0f), new Vector3(width, frontHeight, 0.014f));
+            Part(tray.transform, "Handle", new Vector3(0f, 0f, 0.022f), new Vector3(0.12f, 0.02f, 0.03f), SafeMetalMaterial);
+            Part(tray.transform, "Floor", new Vector3(0f, -frontHeight / 2f + 0.006f, -trayDepth / 2f), new Vector3(width - 0.02f, 0.012f, trayDepth));
 
-            float faceZ = depth / 2f + 0.006f;
-            Part(root.transform, "DrawerFront", new Vector3(0f, height * 0.6f, faceZ), new Vector3(width - 0.05f, 0.18f, 0.012f));
-            Part(root.transform, "DrawerHandle", new Vector3(0f, height * 0.6f, faceZ + 0.02f), new Vector3(0.14f, 0.02f, 0.03f), SafeMetalMaterial);
-
-            return root;
+            return tray;
         }
     }
 }

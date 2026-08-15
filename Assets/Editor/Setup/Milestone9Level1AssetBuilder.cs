@@ -142,6 +142,7 @@ namespace EndlessRooms.EditorSetup
             BuildExitPoint(items.GoldenKey);
             BuildJumpScares();
             BuildCentralCorridorFurniture(items);
+            BuildStartCouch(items);
             BuildProgressionContent(items, inventory);
 
             BuildInteractionPromptUi(interactionCaster);
@@ -519,6 +520,7 @@ namespace EndlessRooms.EditorSetup
         }
 
         private static readonly Dictionary<string, Door> _officeDoors = new();
+        private static readonly Dictionary<string, Transform> _officeDeskDrawerAnchors = new();
 
         /// <summary>Offices and bathrooms had no light source at all — everything else in Level 1 (corridor, courtyards) does. A steady ceiling fixture, not the corridor's flickering warning kind, since these rooms are meant to be safely explorable.</summary>
         private static void BuildRoomLight(Transform room)
@@ -651,7 +653,7 @@ namespace EndlessRooms.EditorSetup
 
         private static Material GetOrCreateWindowGlassMaterial()
         {
-            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.3f));
+            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.5f));
         }
 
         /// <summary>
@@ -730,8 +732,9 @@ namespace EndlessRooms.EditorSetup
                 // "see who's coming in" layout) — the chair goes on the desk's far side
                 // from the door, tucked between the desk and the back wall.
                 Vector3 deskPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX, floorY, 0f));
-                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(-intoRoomFromBackWall));
+                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(-intoRoomFromBackWall), out Transform drawerAnchor);
                 AddHidingSpot(desk);
+                _officeDeskDrawerAnchors[spec.Id] = drawerAnchor;
 
                 Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.7f, floorY, 0f));
                 Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(intoRoomFromBackWall));
@@ -853,6 +856,11 @@ namespace EndlessRooms.EditorSetup
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null)
             {
+                // Re-applied on every rebuild (not just at creation) so tuning a color/alpha
+                // constant at a call site actually takes effect on a re-run instead of
+                // silently no-opping against whatever was baked in the first time.
+                existing.color = color;
+                EditorUtility.SetDirty(existing);
                 return existing;
             }
 
@@ -1268,8 +1276,10 @@ namespace EndlessRooms.EditorSetup
         }
 
         /// <summary>West couch + 2 side tables on the west arm of the cross corridor, mirrored on the east arm — the normal Flashlight sits in one of the west side tables (req. 1); everything else there is dressing.</summary>
+        /// <summary>Pure dressing — the normal Flashlight used to live on one of these, but it was too easy to miss this far from the start; see BuildStartCouch for where it lives now.</summary>
         private static void BuildCentralCorridorFurniture(CollectibleItems items)
         {
+            _ = items;
             GameObject crossCorridor = GameObject.Find("CrossCorridorArms");
             Transform parent = crossCorridor != null ? crossCorridor.transform : null;
 
@@ -1282,22 +1292,38 @@ namespace EndlessRooms.EditorSetup
 
                 Vector3 tableLeftPos = couchPos + new Vector3(-1.15f, 0f, 0f);
                 Vector3 tableRightPos = couchPos + new Vector3(1.15f, 0f, 0f);
-                GameObject tableLeft = Level1FurnitureBuilder.BuildSideTable(parent, $"SideTable_{side}_A", tableLeftPos, Quaternion.identity);
+                Level1FurnitureBuilder.BuildSideTable(parent, $"SideTable_{side}_A", tableLeftPos, Quaternion.identity);
                 Level1FurnitureBuilder.BuildSideTable(parent, $"SideTable_{side}_B", tableRightPos, Quaternion.identity);
-
-                if (side == Side.West)
-                {
-                    Vector3 flashlightPos = tableLeftPos + new Vector3(0f, 0.5f + 0.03f, 0f);
-                    GameObject flashlightGo = Level1ItemModelBuilder.BuildFlashlight(tableLeft.transform, items.Flashlight.DisplayName, flashlightPos, Quaternion.Euler(0f, 90f, 0f), out _);
-                    AddPickup(flashlightGo, items.Flashlight);
-                }
             }
+        }
+
+        /// <summary>
+        /// A couch + side table right by the start (main corridor, row 1 — between R01 and
+        /// R02's doors), with the normal Flashlight on the table. The cross-corridor
+        /// couches are a long walk from spawn; this is meant to be the very first thing
+        /// a player notices.
+        /// </summary>
+        private static void BuildStartCouch(CollectibleItems items)
+        {
+            GameObject mainCorridor = GameObject.Find("MainCorridor");
+            Transform parent = mainCorridor != null ? mainCorridor.transform : null;
+
+            Vector3 cellCenter = Level1Layout.CorridorCellCenter(1);
+            Vector3 couchPos = cellCenter + new Vector3(-(Level1Layout.CorridorWidth / 2f - 0.9f), 0f, 0f);
+            Level1FurnitureBuilder.BuildCouch(parent, "Couch_Start", couchPos, Quaternion.LookRotation(Vector3.right));
+
+            Vector3 tablePos = couchPos + new Vector3(0f, 0f, 1.15f);
+            GameObject table = Level1FurnitureBuilder.BuildSideTable(parent, "SideTable_Start", tablePos, Quaternion.identity);
+
+            Vector3 flashlightPos = tablePos + new Vector3(0f, 0.5f + 0.03f, 0f);
+            GameObject flashlightGo = Level1ItemModelBuilder.BuildFlashlight(table.transform, items.Flashlight.DisplayName, flashlightPos, Quaternion.Euler(0f, 90f, 0f), out _);
+            AddPickup(flashlightGo, items.Flashlight);
         }
 
         /// <summary>
         /// Room-by-room placement for the full item/lock/clue chain (see
         /// docs/features/milestone-9-playable-office-levels.md for the design):
-        /// R01 ID Card -> (R07 UV Flashlight door, R08 Cassette drawer) -> tape reveals
+        /// R01 ID Card -> (R07 UV Flashlight door, R06 Cassette drawer) -> tape reveals
         /// R09 Bronze Key -> R02 Battery drawer -> combine -> Male Bathroom code ->
         /// R12 keypad safe -> Golden Key -> exit. R03/R05/R06/R10/R11/R13/R14 are
         /// lore/red-herring rooms with no spider clue.
@@ -1316,18 +1342,19 @@ namespace EndlessRooms.EditorSetup
                 BuildSpiderWeb(r01, r01Center, r01Side, inventory, items.IdCard, null, null, null);
             }
 
-            // R02 — Battery locked in a drawer that only the Bronze Key opens.
+            // R02 — Battery locked in a drawer that only the Bronze Key opens. Built into the desk's own drawer slot (see BuildDeskDrawerTrayFor) rather than a standalone floor cabinet, so it doesn't block the walk from the door to the desk.
             if (TryGetRoom("R02", out Transform r02, out Vector3 r02Center, out Side r02Side))
             {
-                Vector3 cabinetPos = Level1Layout.LocalToWorld(r02Center, r02Side, new Vector3(1.3f, WallThickness / 2f, -1.0f));
-                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r02Side, Vector3.right));
-                GameObject cabinet = Level1FurnitureBuilder.BuildLockableDrawerCabinet(r02, "BatteryCabinet", cabinetPos, facing);
+                GameObject tray = BuildDeskDrawerTrayFor("R02", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject batteryGo = Level1ItemModelBuilder.BuildBattery(tray.transform, items.Battery.DisplayName, contentPos, contentRot);
+                    AddPickup(batteryGo, items.Battery);
 
-                GameObject batteryGo = Level1ItemModelBuilder.BuildBattery(cabinet.transform, items.Battery.DisplayName, cabinetPos + facing * new Vector3(0f, 0.31f, 0.28f), facing);
-                AddPickup(batteryGo, items.Battery);
-
-                AddLockableDrawer(cabinet, items.BronzeKey, consume: true, batteryGo);
-                BuildSpiderWeb(r02, r02Center, r02Side, inventory, items.Battery, items.BronzeKey, null, null);
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.BronzeKey, true, batteryGo, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    BuildSpiderWeb(r02, r02Center, r02Side, inventory, items.Battery, items.BronzeKey, null, null);
+                }
             }
 
             // R03 — lore only, no lock, no clue.
@@ -1347,20 +1374,30 @@ namespace EndlessRooms.EditorSetup
             }
 
             // R05 — red herring: ID Card also opens this drawer, but it's empty besides a flavor note. No clue web (red herrings are indistinguishable from real progression rooms until searched).
-            if (TryGetRoom("R05", out Transform r05, out Vector3 r05Center, out Side r05Side))
+            if (TryGetRoom("R05", out _, out _, out _))
             {
-                Vector3 cabinetPos = Level1Layout.LocalToWorld(r05Center, r05Side, new Vector3(1.3f, WallThickness / 2f, -1.0f));
-                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r05Side, Vector3.right));
-                GameObject cabinet = Level1FurnitureBuilder.BuildLockableDrawerCabinet(r05, "RedHerringCabinet", cabinetPos, facing);
-                GameObject badgeNote = BuildLoreNoteGameObject(cabinet.transform, cabinetPos + facing * new Vector3(0f, 0.31f, 0.28f), "Look Inside", "Just a dusty old employee badge, long expired. Not what you were hoping for.");
-                AddLockableDrawer(cabinet, items.IdCard, consume: false, badgeNote);
+                GameObject tray = BuildDeskDrawerTrayFor("R05", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject badgeNote = BuildLoreNoteGameObject(tray.transform, contentPos, "Look Inside", "Just a dusty old employee badge, long expired. Not what you were hoping for.");
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.IdCard, false, badgeNote, tray.transform, new Vector3(0f, 0f, 0.22f));
+                }
             }
 
-            // R06 — lore only.
+            // R06 — Cassette locked in a drawer, also opened by the ID Card (moved here from R08, which has a meeting table instead of a desk — every locked drawer needs a real desk to live in).
             if (TryGetRoom("R06", out Transform r06, out Vector3 r06Center, out Side r06Side))
             {
-                Vector3 pos = Level1Layout.LocalToWorld(r06Center, r06Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
-                SpawnLoreNote(r06, pos, "Read File", "A personnel file, water-damaged past reading — only the header survives: \"...TERMINATION PENDING...\"");
+                GameObject tray = BuildDeskDrawerTrayFor("R06", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject cassetteGo = Level1ItemModelBuilder.BuildCassette(tray.transform, items.Cassette.DisplayName, contentPos, contentRot);
+                    AddPickup(cassetteGo, items.Cassette);
+
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.IdCard, false, cassetteGo, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    BuildSpiderWeb(r06, r06Center, r06Side, inventory, items.Cassette, items.IdCard, null, null);
+                }
             }
 
             // R07 — UV Flashlight, sitting openly, but the room door itself needs the ID Card (reusable, not consumed).
@@ -1378,18 +1415,11 @@ namespace EndlessRooms.EditorSetup
                 }
             }
 
-            // R08 — Cassette locked in a drawer, also opened by the ID Card.
+            // R08 — lore only (meeting-table room, no desk — moved the Cassette's drawer to R06, which has one).
             if (TryGetRoom("R08", out Transform r08, out Vector3 r08Center, out Side r08Side))
             {
-                Vector3 cabinetPos = Level1Layout.LocalToWorld(r08Center, r08Side, new Vector3(1.3f, WallThickness / 2f, -1.0f));
-                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r08Side, Vector3.right));
-                GameObject cabinet = Level1FurnitureBuilder.BuildLockableDrawerCabinet(r08, "CassetteCabinet", cabinetPos, facing);
-
-                GameObject cassetteGo = Level1ItemModelBuilder.BuildCassette(cabinet.transform, items.Cassette.DisplayName, cabinetPos + facing * new Vector3(0f, 0.31f, 0.28f), facing);
-                AddPickup(cassetteGo, items.Cassette);
-
-                AddLockableDrawer(cabinet, items.IdCard, consume: false, cassetteGo);
-                BuildSpiderWeb(r08, r08Center, r08Side, inventory, items.Cassette, items.IdCard, null, null);
+                Vector3 pos = Level1Layout.LocalToWorld(r08Center, r08Side, new Vector3(0.35f, 0.77f, 1.05f));
+                SpawnLoreNote(r08, pos, "Read File", "A personnel file, water-damaged past reading — only the header survives: \"...TERMINATION PENDING...\"");
             }
 
             // R09 — Bronze Key, sitting openly (its significance is only explained once the tape is heard, but nothing physically stops picking it up early).
@@ -1401,12 +1431,10 @@ namespace EndlessRooms.EditorSetup
                 BuildSpiderWeb(r09, r09Center, r09Side, inventory, items.BronzeKey, null, null, null);
             }
 
-            // R10 — red herring: a decorative locked-looking cabinet with no actual lock component (never interactable), plus a note with a fake code. No clue web.
+            // R10 — red herring: a drawer that looks exactly like a real one (same desk-mounted tray) but has no LockableDrawer at all, so interacting does nothing — plus a note with a fake code. No clue web.
             if (TryGetRoom("R10", out Transform r10, out Vector3 r10Center, out Side r10Side))
             {
-                Vector3 cabinetPos = Level1Layout.LocalToWorld(r10Center, r10Side, new Vector3(1.3f, WallThickness / 2f, -1.0f));
-                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r10Side, Vector3.right));
-                Level1FurnitureBuilder.BuildLockableDrawerCabinet(r10, "DecorativeCabinet", cabinetPos, facing);
+                BuildDeskDrawerTrayFor("R10", out _, out _);
 
                 Vector3 notePos = Level1Layout.LocalToWorld(r10Center, r10Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
                 SpawnLoreNote(r10, notePos, "Read Note", "A scrap taped to the desk: \"the code is 4471, don't forget it this time\" — someone's handwriting, but it doesn't look right somehow.");
@@ -1448,7 +1476,11 @@ namespace EndlessRooms.EditorSetup
 
             if (TryGetRoom("R14", out Transform r14, out Vector3 r14Center, out Side r14Side))
             {
-                Vector3 pos = Level1Layout.LocalToWorld(r14Center, r14Side, new Vector3(0f, 0.865f, 0f));
+                // Off-center toward one corner of the table, beyond its last pair of
+                // chairs (which sit at local Z = +-0.8, table half-length is 1.2) — the
+                // dead-center used everywhere else is unreachable here since the meeting
+                // table's whole perimeter is ringed with chairs.
+                Vector3 pos = Level1Layout.LocalToWorld(r14Center, r14Side, new Vector3(0.35f, 0.77f, 1.05f));
                 SpawnLoreNote(r14, pos, "Read Note", "Meeting minutes, dated years ago, for a project with no name — every line item redacted but one: \"maintenance continues.\"");
             }
 
@@ -1508,12 +1540,28 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        /// <summary>Wires a LockableDrawer onto an already-built cabinet prop's root, revealing (activating) revealedContent once unlocked. revealedContent starts inactive here since LockableDrawer.Awake (which also does this) never runs during headless Editor scripting.</summary>
-        private static LockableDrawer AddLockableDrawer(GameObject cabinetRoot, InventoryItemDefinition requiredItem, bool consume, GameObject revealedContent)
+        /// <summary>
+        /// Builds a real openable drawer tray in the given room's desk (see
+        /// BuildOfficeFurniture/_officeDeskDrawerAnchors) and returns it, plus the
+        /// world position/rotation its contents should be built at so they ride the
+        /// tray open. Returns null (and logs) if the room has no desk anchor — e.g. a
+        /// meeting-table room, which is a content-design mistake, not something to fail
+        /// past silently.
+        /// </summary>
+        private static GameObject BuildDeskDrawerTrayFor(string roomId, out Vector3 contentWorldPosition, out Quaternion contentRotation)
         {
-            var drawer = cabinetRoot.AddComponent<LockableDrawer>();
-            drawer.Configure(requiredItem, consume, revealedContent);
-            return drawer;
+            if (!_officeDeskDrawerAnchors.TryGetValue(roomId, out Transform anchor) || anchor == null)
+            {
+                Debug.LogError($"[Milestone9Level1AssetBuilder] No desk drawer anchor for '{roomId}' — does that room have a desk (UseMeetingTable must be false)?");
+                contentWorldPosition = Vector3.zero;
+                contentRotation = Quaternion.identity;
+                return null;
+            }
+
+            GameObject tray = Level1FurnitureBuilder.BuildDeskDrawerTray(anchor, "LockedDrawer");
+            contentRotation = tray.transform.rotation;
+            contentWorldPosition = tray.transform.TransformPoint(new Vector3(0f, -0.1f, -0.15f));
+            return tray;
         }
 
         private static GameObject BuildLoreNoteGameObject(Transform parent, Vector3 worldPosition, string promptLabel, string text)
@@ -1547,7 +1595,16 @@ namespace EndlessRooms.EditorSetup
         private static void BuildSpiderWeb(Transform room, Vector3 roomCenter, Side side, Inventory inventory, InventoryItemDefinition obtainedItem, InventoryItemDefinition requiredItem, MonoBehaviour showGate, MonoBehaviour dismissGate)
         {
             Vector3 intoRoom = Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.right);
-            Vector3 localOffset = new(-Level1Layout.RoomDepthX / 2f + 0.04f, WallHeight - 0.3f, Level1Layout.RoomWidthZ / 2f - 0.4f);
+
+            // "Top-left, in the back" is defined from the perspective of a player walking
+            // in from the door (local -X) toward the back wall — their left is local -Z
+            // for a West room, but Level1Layout.LocalToWorld only mirrors the X
+            // component, not Z, so a plain "-Z" offset would land on the player's *right*
+            // in East rooms. Flipping the Z sign by the same xSign LocalToWorld uses for
+            // X keeps "left" consistent on both sides of the corridor. Also clear of
+            // BuildOfficeFurniture's bookshelf, which sits in the +Z corner.
+            float xSign = side == Side.West ? 1f : -1f;
+            Vector3 localOffset = new(-Level1Layout.RoomDepthX / 2f + 0.05f, WallHeight - 0.35f, -xSign * (Level1Layout.RoomWidthZ / 2f - 0.4f));
             Vector3 worldPos = Level1Layout.LocalToWorld(roomCenter, side, localOffset);
 
             Level1ItemModelBuilder.BuildSpiderWebPlaceholder(room, "SpiderWebVisual", worldPos, Quaternion.LookRotation(intoRoom), out GameObject webOnly, out GameObject spider);

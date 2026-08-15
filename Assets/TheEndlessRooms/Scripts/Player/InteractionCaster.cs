@@ -20,6 +20,8 @@ namespace EndlessRooms.Player
         [SerializeField] private InputActionReference _interactAction;
         [SerializeField] private float _interactionRange = 2.5f;
         [SerializeField] private LayerMask _interactionMask = ~0;
+        [Tooltip("SphereCast radius instead of a thin ray, so small pickups (batteries, keys, ID cards) don't need pixel-perfect aim.")]
+        [SerializeField] private float _aimAssistRadius = 0.12f;
 
         [Tooltip("Optional. When set (e.g. to a VR controller's transform), this is used as the ray origin/direction instead of the view camera.")]
         [SerializeField] private Transform _rayOriginOverride;
@@ -68,7 +70,7 @@ namespace EndlessRooms.Player
             }
 
             var ray = new Ray(rayOrigin.position, rayOrigin.forward);
-            if (!Physics.Raycast(ray, out RaycastHit hit, _interactionRange, _interactionMask, QueryTriggerInteraction.Collide))
+            if (!Physics.SphereCast(ray, _aimAssistRadius, out RaycastHit hit, _interactionRange, _interactionMask, QueryTriggerInteraction.Collide))
             {
                 return null;
             }
