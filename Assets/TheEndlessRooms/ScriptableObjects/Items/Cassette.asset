@@ -15,3 +15,4 @@ MonoBehaviour:
   ItemId: cassette
   DisplayName: Audio Cassette
   Description: A labeled cassette tape. Needs a player.
+  Icon: {fileID: 21300000, guid: 16ee45f6b2f8ae4d49f1c6abfc8f9e05, type: 3}

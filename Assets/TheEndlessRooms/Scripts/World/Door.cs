@@ -20,8 +20,11 @@ namespace EndlessRooms.World
         [SerializeField] private string _customOpenPrompt = "";
         [SerializeField] private string _customClosePrompt = "";
 
-        [Tooltip("Milestone 9: if set, interacting with this door while locked checks the instigator's Inventory for this specific item — if present, the item is consumed and the door unlocks. Leave blank for locks that unlock some other way (e.g. PuzzleGateController).")]
+        [Tooltip("Milestone 9: if set, interacting with this door while locked checks the instigator's Inventory for this specific item — if present, the door unlocks. Leave blank for locks that unlock some other way (e.g. PuzzleGateController).")]
         [SerializeField] private InventoryItemDefinition _requiredItem;
+
+        [Tooltip("Whether unlocking removes _requiredItem from the Inventory. False for a reusable key that fits more than one lock in the level.")]
+        [SerializeField] private bool _consumeRequiredItem = true;
 
         [Tooltip("Seconds an open door stays open before swinging shut on its own. 0 or less disables auto-close.")]
         [SerializeField] private float _autoCloseSeconds = 30f;
@@ -122,9 +125,10 @@ namespace EndlessRooms.World
         }
 
         /// <summary>Placement-time override wiring the item that unlocks this door. Leave unset for locks that unlock some other way (e.g. PuzzleGateController).</summary>
-        public void SetRequiredItem(InventoryItemDefinition item)
+        public void SetRequiredItem(InventoryItemDefinition item, bool consume = true)
         {
             _requiredItem = item;
+            _consumeRequiredItem = consume;
         }
 
         public bool CanInteract(InteractionContext context)
@@ -179,7 +183,11 @@ namespace EndlessRooms.World
                 return false;
             }
 
-            inventory.TryRemoveItem(_requiredItem.ItemId);
+            if (_consumeRequiredItem)
+            {
+                inventory.TryRemoveItem(_requiredItem.ItemId);
+            }
+
             SetLocked(false);
             return true;
         }

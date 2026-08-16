@@ -23,6 +23,11 @@ namespace EndlessRooms.EditorSetup
         private static Material _flashlightLensMaterial;
         private static Material _uvLensMaterial;
         private static Material _paperLabelMaterial;
+        private static Material _idCardMaterial;
+        private static Material _idPhotoMaterial;
+        private static Material _idStripeMaterial;
+        private static Material _webMaterial;
+        private static Material _spiderMaterial;
 
         private static Material GetOrCreate(ref Material cache, string name, Color color, float smoothness, float metallic, Color? emission = null)
         {
@@ -65,6 +70,11 @@ namespace EndlessRooms.EditorSetup
         private static Material FlashlightLensMaterial => GetOrCreate(ref _flashlightLensMaterial, "ItemFlashlightLens", new Color(0.85f, 0.85f, 0.75f), 0.8f, 0f, new Color(0.9f, 0.9f, 0.7f) * 1.5f);
         private static Material UvLensMaterial => GetOrCreate(ref _uvLensMaterial, "ItemUvLens", new Color(0.35f, 0.1f, 0.55f), 0.8f, 0f, new Color(0.55f, 0.1f, 0.9f) * 1.5f);
         private static Material PaperLabelMaterial => GetOrCreate(ref _paperLabelMaterial, "ItemPaperLabel", new Color(0.82f, 0.78f, 0.65f), 0.1f, 0f);
+        private static Material IdCardMaterial => GetOrCreate(ref _idCardMaterial, "ItemIdCard", new Color(0.9f, 0.91f, 0.93f), 0.6f, 0f);
+        private static Material IdPhotoMaterial => GetOrCreate(ref _idPhotoMaterial, "ItemIdPhoto", new Color(0.25f, 0.28f, 0.32f), 0.2f, 0f);
+        private static Material IdStripeMaterial => GetOrCreate(ref _idStripeMaterial, "ItemIdStripe", new Color(0.65f, 0.1f, 0.12f), 0.3f, 0f);
+        private static Material WebMaterial => GetOrCreate(ref _webMaterial, "SpiderWeb", new Color(0.82f, 0.82f, 0.8f), 0.15f, 0f);
+        private static Material SpiderMaterial => GetOrCreate(ref _spiderMaterial, "Spider", new Color(0.05f, 0.04f, 0.04f), 0.1f, 0f);
 
         private static GameObject Box(Transform parent, string name, Vector3 localPosition, Vector3 size, Material material)
         {
@@ -230,6 +240,60 @@ namespace EndlessRooms.EditorSetup
             Box(root.transform, "Bit", new Vector3(bitWidth / 4f, 0f, bitZ), new Vector3(bitWidth / 2f, thickness, bitHeight), material);
 
             return root;
+        }
+
+        // ---------------------------------------------------------------- ID card
+
+        /// <summary>Local +Z is "up" when held flat, local +X the long edge — a plain PVC badge card with a photo square and a colored stripe, no lanyard (never seen worn, only picked up off a desk).</summary>
+        internal static GameObject BuildIdCard(Transform parent, string name, Vector3 worldPosition, Quaternion rotation)
+        {
+            const float width = 0.086f;
+            const float height = 0.054f;
+            const float depth = 0.0015f;
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            Box(root.transform, "Card", Vector3.zero, new Vector3(width, depth, height), IdCardMaterial);
+            Box(root.transform, "Photo", new Vector3(-width * 0.28f, depth / 2f + 0.0003f, 0.006f), new Vector3(0.02f, 0.0006f, 0.024f), IdPhotoMaterial);
+            Box(root.transform, "Stripe", new Vector3(0f, depth / 2f + 0.0003f, -height * 0.32f), new Vector3(width - 0.008f, 0.0006f, 0.008f), IdStripeMaterial);
+
+            return root;
+        }
+
+        // ---------------------------------------------------------------- spider web clue
+
+        /// <summary>
+        /// Placeholder art for <see cref="EndlessRooms.World.SpiderWebClue"/> until the
+        /// user's two reference images ("web with spider" / "web without spider") get
+        /// imported as real sprites — a flat diamond mounted flush in a corner, plus a
+        /// tiny primitive spider that only the "with spider" state activates. Swapping in
+        /// real art later just means replacing these two child renderers with
+        /// SpriteRenderers; the SpiderWebClue component only cares about the two
+        /// GameObject references, not what's drawing them.
+        /// </summary>
+        internal static void BuildSpiderWebPlaceholder(Transform parent, string name, Vector3 worldPosition, Quaternion rotation, out GameObject webOnlyVisual, out GameObject spiderVisual)
+        {
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, true);
+            root.transform.SetPositionAndRotation(worldPosition, rotation);
+
+            webOnlyVisual = Box(root.transform, "WebOnly", Vector3.zero, new Vector3(0.4f, 0.4f, 0.008f), WebMaterial);
+            webOnlyVisual.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+
+            var spiderRoot = new GameObject("Spider");
+            spiderRoot.transform.SetParent(root.transform, false);
+            spiderRoot.transform.localPosition = new Vector3(0f, 0f, 0.008f);
+            Box(spiderRoot.transform, "Body", Vector3.zero, new Vector3(0.05f, 0.035f, 0.03f), SpiderMaterial);
+            for (int i = 0; i < 3; i++)
+            {
+                float t = (i - 1) * 20f;
+                Box(spiderRoot.transform, "Leg", new Vector3(-0.04f, 0f, 0f), new Vector3(0.05f, 0.007f, 0.007f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, t);
+                Box(spiderRoot.transform, "Leg", new Vector3(0.04f, 0f, 0f), new Vector3(0.05f, 0.007f, 0.007f), SpiderMaterial).transform.localRotation = Quaternion.Euler(0f, 0f, 180f - t);
+            }
+
+            spiderVisual = spiderRoot;
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using EndlessRooms.AI;
 using EndlessRooms.Core;
@@ -21,9 +22,13 @@ namespace EndlessRooms.EditorSetup
     /// and <see cref="Level1Layout"/> for the shared position math). 14 offices at
     /// 5m(deep) x 6m(wide) x 3m(tall), a 6m-wide corridor, 2 paired bathrooms, 2 open-air
     /// courtyards, a PC player, the Attendant (unchanged from Milestone 7, pathing via
-    /// <see cref="Level1RoomGraphProvider"/>'s synthetic graph), the exit, and a first
-    /// investigate-clue-key-locked door chain proving the mechanic end to end (more
-    /// content is a follow-up, not a blocker for the first playable pass).
+    /// <see cref="Level1RoomGraphProvider"/>'s synthetic graph), the exit (Golden Key
+    /// gated), and the full collectible/lock progression chain: ID Card unlocks the UV
+    /// Flashlight room and the Cassette's drawer; Cassette+Recorder reveal the Bronze
+    /// Key's room and the male-bathroom UV code; Bronze Key unlocks the Battery's
+    /// drawer; Battery powers the UV Flashlight; the revealed code opens R12's keypad
+    /// safe, which holds the Golden Key. Spider-web placeholders (SpiderWebClue) mark
+    /// every progression room.
     /// </summary>
     public static class Milestone9Level1AssetBuilder
     {
@@ -45,9 +50,9 @@ namespace EndlessRooms.EditorSetup
         private const string JumpScareSpritePath = "Assets/TheEndlessRooms/Art/Textures/JumpScareMonster.png";
         private const float JumpScareSpritePixelsPerUnit = 700f;
 
-        // Shared with BuildFirstKeyLockChain, which positions the R01 key/note relative
-        // to the desk's actual position — keeping one constant means they can't drift
-        // apart the way they did when the desk moved but the item offsets didn't.
+        // Matches BuildOfficeFurniture's own desk placement — reused by BuildProgressionContent
+        // to rest desk-top items at the actual desk position instead of a second
+        // hardcoded number that could drift out of sync with it.
         private const float OfficeDeskLocalX = -0.3f;
 
         private const string WallTexturePath = "Assets/TheEndlessRooms/Art/Textures/WallAlbedo_Level1.png";
@@ -82,9 +87,10 @@ namespace EndlessRooms.EditorSetup
 
         private const string CassetteMessageText =
             "(A woman's voice, half-buried in tape hiss)\n\n" +
-            "\"...if anyone finds this — don't trust the roster. Whoever's " +
-            "signing the maintenance logs isn't on it. Check R11 before you " +
-            "check anywhere else.\"";
+            "\"...if anyone finds this — there's a UV bulb in the maintenance kit. " +
+            "Power it up and use it in the men's room, there's something written on " +
+            "the wall that doesn't show under normal light. And if you need a bronze " +
+            "key for anything, check R09 — it's just sitting there on the desk.\"";
 
         [MenuItem("Tools/The Endless Rooms/M9 Level 1/Build Scene")]
         public static void BuildScene()
@@ -98,6 +104,13 @@ namespace EndlessRooms.EditorSetup
             }
 
             new GameObject("GameBootstrap").AddComponent<Core.GameBootstrap>();
+            new GameObject("LevelProgressService").AddComponent<LevelProgressService>();
+
+            LevelDefinition thisLevel = LevelCatalogBuilder.LoadOrCreateLevel1();
+            var completionRecorder = new GameObject("LevelCompletionRecorder").AddComponent<LevelCompletionRecorder>();
+            var recorderSo = new SerializedObject(completionRecorder);
+            recorderSo.FindProperty("_level").objectReferenceValue = thisLevel;
+            recorderSo.ApplyModifiedPropertiesWithoutUndo();
 
             var levelRoot = new GameObject("Level1_HorrorOffice").transform;
 
@@ -133,17 +146,18 @@ namespace EndlessRooms.EditorSetup
             Milestone7AssetBuilder.BuildAttendant(levelGraphGo, attendantConfig, playerGo.transform);
             BuildAttendantAppearanceCycle(warningLights, courtyardRain, lightningFlash);
 
-            BuildExitPoint();
-            BuildFirstKeyLockChain(playerGo.transform);
+            BuildExitPoint(items.GoldenKey);
             BuildJumpScares();
-            BuildCollectibleItems(items);
-            BuildUvRevealedBathroomClue();
+            BuildCentralCorridorFurniture(items);
+            BuildStartCouch(items);
+            BuildProgressionContent(items, inventory);
 
             BuildInteractionPromptUi(interactionCaster);
             BuildLevelCompleteUi();
             BuildGameOverUi();
             BuildHeartbeatVignetteUi();
             BuildFieldNoteUi(actionRefs.Interact);
+            BuildKeypadEntryUi(actionRefs.Interact);
             BuildInventoryHudUi(inventory, selectionController);
 
             ApplyLevel1Materials(levelRoot);
@@ -151,7 +165,7 @@ namespace EndlessRooms.EditorSetup
             EditorSceneManager.SaveScene(scene, ScenePath);
             AddSceneToBuildSettings(ScenePath);
 
-            Debug.Log($"[Milestone9Level1AssetBuilder] Built and saved '{ScenePath}' — {Level1Layout.Offices.Length} offices, 2 bathrooms, 2 courtyards, player, Attendant, exit, one key/lock chain, jump scares.");
+            Debug.Log($"[Milestone9Level1AssetBuilder] Built and saved '{ScenePath}' — {Level1Layout.Offices.Length} offices, 2 bathrooms, 2 courtyards, player, Attendant, Golden-Key-gated exit, full 8-item progression chain, jump scares.");
         }
 
         // ---------------------------------------------------------------- materials
@@ -429,7 +443,7 @@ namespace EndlessRooms.EditorSetup
         }
 
         /// <summary>Minimal textured-material helper for Level 1's own wall/door art (no normal map provided this round) — see Milestone8AssetBuilder.CreateTexturedMaterial for the fuller version used by the procedural rooms.</summary>
-        private static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath, bool mirrorHorizontal)
+        internal static Material CreateSimpleTexturedMaterial(string texturePath, string materialPath, bool mirrorHorizontal)
         {
             var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (albedo == null)
@@ -509,13 +523,11 @@ namespace EndlessRooms.EditorSetup
             BuildOfficeFurniture(roomGo.transform, spec);
             BuildRoomLight(roomGo.transform);
 
-            if (spec.Id == "R11")
-            {
-                _pendingLockedDoor = door;
-            }
+            _officeDoors[spec.Id] = door;
         }
 
-        private static Door _pendingLockedDoor;
+        private static readonly Dictionary<string, Door> _officeDoors = new();
+        private static readonly Dictionary<string, Transform> _officeDeskDrawerAnchors = new();
 
         /// <summary>Offices and bathrooms had no light source at all — everything else in Level 1 (corridor, courtyards) does. A steady ceiling fixture, not the corridor's flickering warning kind, since these rooms are meant to be safely explorable.</summary>
         private static void BuildRoomLight(Transform room)
@@ -628,27 +640,39 @@ namespace EndlessRooms.EditorSetup
         private static Material GetOrCreateWindowFrameMaterial()
         {
             const string path = "Assets/TheEndlessRooms/Art/Materials/WindowFrame_Level1.mat";
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null)
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            bool isNew = material == null;
+            if (isNew)
             {
-                return existing;
+                material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             }
 
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            {
-                color = new Color(0.09f, 0.09f, 0.1f),
-            };
-            material.SetFloat("_Smoothness", 0.4f);
-            material.SetFloat("_Metallic", 0.3f);
+            // Brushed-aluminum look — lighter and considerably more metallic/glossy than
+            // the original near-black, barely-metallic value, which read as flat plastic
+            // rather than an actual window frame.
+            material.color = new Color(0.62f, 0.63f, 0.66f);
+            material.SetFloat("_Smoothness", 0.75f);
+            material.SetFloat("_Metallic", 0.85f);
 
-            EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
-            AssetDatabase.CreateAsset(material, path);
+            if (isNew)
+            {
+                EnsureFolder("Assets/TheEndlessRooms/Art/Materials");
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else
+            {
+                EditorUtility.SetDirty(material);
+            }
+
             return material;
         }
 
         private static Material GetOrCreateWindowGlassMaterial()
         {
-            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.3f));
+            // 0.3 -> 0.5 wasn't actually visible in play since GetOrCreateUnlitTransparentMaterial
+            // used to only apply color on first creation (fixed) — 0.14 is a real "barely
+            // there" pane the player can actually see the night sky through.
+            return GetOrCreateUnlitTransparentMaterial("Assets/TheEndlessRooms/Art/Materials/WindowGlass_Level1.mat", new Color(0.55f, 0.65f, 0.7f, 0.14f));
         }
 
         /// <summary>
@@ -727,10 +751,13 @@ namespace EndlessRooms.EditorSetup
                 // "see who's coming in" layout) — the chair goes on the desk's far side
                 // from the door, tucked between the desk and the back wall.
                 Vector3 deskPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX, floorY, 0f));
-                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(-intoRoomFromBackWall));
+                GameObject desk = Level1FurnitureBuilder.BuildDesk(room, "Desk", deskPos, Quaternion.LookRotation(-intoRoomFromBackWall), out Transform drawerAnchor);
                 AddHidingSpot(desk);
+                _officeDeskDrawerAnchors[spec.Id] = drawerAnchor;
 
-                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.7f, floorY, 0f));
+                // Tucked in closer to the desk than before (-0.7 -> -0.55) to free up
+                // walking space between the chair and the back wall/closet.
+                Vector3 chairPos = Level1Layout.LocalToWorld(roomCenter, spec.Side, new Vector3(OfficeDeskLocalX - 0.55f, floorY, 0f));
                 Level1FurnitureBuilder.BuildChair(room, "Chair", chairPos, Quaternion.LookRotation(intoRoomFromBackWall));
             }
 
@@ -787,9 +814,34 @@ namespace EndlessRooms.EditorSetup
             CreateBlockWorld(roomGo.transform, "Wall_SideA", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
             CreateBlockWorld(roomGo.transform, "Wall_SideB", Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallHeight / 2f, -Level1Layout.RoomWidthZ / 2f)), new Vector3(Level1Layout.RoomDepthX, WallHeight, WallThickness));
 
-            AddFurniture(roomGo.transform, "PlanterPlaceholder", Level1Layout.LocalToWorld(center, side, new Vector3(-1.8f, 0.3f, 0f)), new Vector3(0.8f, 0.6f, 0.8f), hideable: false);
+            BuildCourtyardPlanters(roomGo.transform, center, side);
 
             return BuildCourtyardRain(roomGo.transform, center);
+        }
+
+        /// <summary>Three planters per courtyard against its three solid walls (the fourth side is the open corridor-facing edge) — alternates which of the two real planter models (see Level1PlanterBuilder) leads on each side so the six end up split evenly.</summary>
+        private static void BuildCourtyardPlanters(Transform room, Vector3 center, Side side)
+        {
+            Vector3 backPos = Level1Layout.LocalToWorld(center, side, new Vector3(-2.2f, WallThickness / 2f, 0f));
+            Vector3 sideAPos = Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallThickness / 2f, 2.6f));
+            Vector3 sideBPos = Level1Layout.LocalToWorld(center, side, new Vector3(0f, WallThickness / 2f, -2.6f));
+
+            Quaternion faceIntoRoom = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.right));
+            Quaternion faceFromSideA = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.back));
+            Quaternion faceFromSideB = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.forward));
+
+            if (side == Side.West)
+            {
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_Back", backPos, faceIntoRoom);
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_SideA", sideAPos, faceFromSideA);
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_SideB", sideBPos, faceFromSideB);
+            }
+            else
+            {
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_Back", backPos, faceIntoRoom);
+                Level1PlanterBuilder.BuildRoundCeramicSnakePlant(room, "Planter_SideA", sideAPos, faceFromSideA);
+                Level1PlanterBuilder.BuildRectangularConcreteBroadLeafPlanter(room, "Planter_SideB", sideBPos, faceFromSideB);
+            }
         }
 
         /// <summary>Off by default (playOnAwake=false, never .Play()'d here) — AttendantAppearanceController starts/stops it alongside its existing light-intensifying calls during Warning/Hunting.</summary>
@@ -850,6 +902,11 @@ namespace EndlessRooms.EditorSetup
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null)
             {
+                // Re-applied on every rebuild (not just at creation) so tuning a color/alpha
+                // constant at a call site actually takes effect on a re-run instead of
+                // silently no-opping against whatever was baked in the first time.
+                existing.color = color;
+                EditorUtility.SetDirty(existing);
                 return existing;
             }
 
@@ -1038,39 +1095,53 @@ namespace EndlessRooms.EditorSetup
             public InventoryItemDefinition Flashlight;
             public InventoryItemDefinition GoldenKey;
             public InventoryItemDefinition BronzeKey;
+            public InventoryItemDefinition IdCard;
         }
 
         private static CollectibleItems LoadOrCreateCollectibleItems()
         {
             EnsureFolder(ItemsFolder);
 
-            InventoryItemDefinition Create(string fileName, string itemId, string displayName, string description)
+            InventoryItemDefinition Create(string fileName, string itemId, string displayName, string description, System.Func<Sprite> buildIcon)
             {
                 string path = $"{ItemsFolder}/{fileName}.asset";
-                var existing = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(path);
-                if (existing != null)
+                var item = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(path);
+                bool isNew = item == null;
+                if (isNew)
                 {
-                    return existing;
+                    item = ScriptableObject.CreateInstance<InventoryItemDefinition>();
+                    item.ItemId = itemId;
+                    item.DisplayName = displayName;
+                    item.Description = description;
+                    AssetDatabase.CreateAsset(item, path);
                 }
 
-                var item = ScriptableObject.CreateInstance<InventoryItemDefinition>();
-                item.ItemId = itemId;
-                item.DisplayName = displayName;
-                item.Description = description;
-                AssetDatabase.CreateAsset(item, path);
+                // Backfills Icon on existing assets too, not just newly-created ones —
+                // items already carried this round from before icons existed shouldn't
+                // stay blank forever.
+                if (item.Icon == null)
+                {
+                    item.Icon = buildIcon();
+                    EditorUtility.SetDirty(item);
+                }
+
                 return item;
             }
 
-            return new CollectibleItems
+            var result = new CollectibleItems
             {
-                Battery = Create("Battery", "battery", "D Battery", "A worn D-cell battery. Powers small electronics."),
-                Cassette = Create("Cassette", "cassette", "Audio Cassette", "A labeled cassette tape. Needs a player."),
-                CassetteRecorder = Create("CassetteRecorder", "cassette_recorder", "Cassette Recorder", "A portable cassette recorder. Needs a tape."),
-                UvFlashlight = Create("UvFlashlight", "uv_flashlight", "UV Flashlight", "Reveals markings invisible under normal light. Needs batteries."),
-                Flashlight = Create("Flashlight", "flashlight", "Flashlight", "A dependable flashlight."),
-                GoldenKey = Create("GoldenKey", "golden_key", "Golden Key", "An ornate golden key."),
-                BronzeKey = Create("BronzeKey", "bronze_key", "Bronze Key", "A plain bronze key."),
+                Battery = Create("Battery", "battery", "D Battery", "A worn D-cell battery. Powers small electronics.", Level1ItemIconBuilder.BuildBatteryIcon),
+                Cassette = Create("Cassette", "cassette", "Audio Cassette", "A labeled cassette tape. Needs a player.", Level1ItemIconBuilder.BuildCassetteIcon),
+                CassetteRecorder = Create("CassetteRecorder", "cassette_recorder", "Cassette Recorder", "A portable cassette recorder. Needs a tape.", Level1ItemIconBuilder.BuildCassetteRecorderIcon),
+                UvFlashlight = Create("UvFlashlight", "uv_flashlight", "UV Flashlight", "Reveals markings invisible under normal light. Needs batteries.", Level1ItemIconBuilder.BuildUvFlashlightIcon),
+                Flashlight = Create("Flashlight", "flashlight", "Flashlight", "A dependable flashlight.", Level1ItemIconBuilder.BuildFlashlightIcon),
+                GoldenKey = Create("GoldenKey", "golden_key", "Golden Key", "An ornate golden key.", Level1ItemIconBuilder.BuildGoldenKeyIcon),
+                BronzeKey = Create("BronzeKey", "bronze_key", "Bronze Key", "A plain bronze key.", Level1ItemIconBuilder.BuildBronzeKeyIcon),
+                IdCard = Create("IdCard", "id_card", "Office ID Card", "An employee ID card. Probably still opens a few doors around here.", Level1ItemIconBuilder.BuildIdCardIcon),
             };
+
+            AssetDatabase.SaveAssets();
+            return result;
         }
 
         private static GameObject BuildPlayer(PlayerMovementConfig config, ActionRefs actionRefs, CollectibleItems items, out InteractionCaster interactionCaster, out CameraShakeEffect cameraShake, out Inventory inventory, out InventorySelectionController selectionController)
@@ -1124,7 +1195,7 @@ namespace EndlessRooms.EditorSetup
             inventory = playerGo.AddComponent<Inventory>();
             var inventorySo = new SerializedObject(inventory);
             SerializedProperty catalogProp = inventorySo.FindProperty("_itemCatalog");
-            var catalogItems = new[] { items.Battery, items.Cassette, items.CassetteRecorder, items.UvFlashlight, items.Flashlight, items.GoldenKey, items.BronzeKey };
+            var catalogItems = new[] { items.Battery, items.Cassette, items.CassetteRecorder, items.UvFlashlight, items.Flashlight, items.GoldenKey, items.BronzeKey, items.IdCard };
             catalogProp.arraySize = catalogItems.Length;
             for (int i = 0; i < catalogItems.Length; i++)
             {
@@ -1189,89 +1260,17 @@ namespace EndlessRooms.EditorSetup
 
         // ---------------------------------------------------------------- exit
 
-        private static void BuildExitPoint()
+        private static void BuildExitPoint(InventoryItemDefinition requiredItem)
         {
             float z = Level1Layout.RowCenterZ(Level1Layout.TotalRows) + Level1Layout.RowSpacing / 2f - 1f;
             var exitGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             exitGo.name = "ExitPoint";
             exitGo.transform.position = new Vector3(0f, 1f, z);
             exitGo.transform.localScale = Vector3.one * 0.6f;
-            exitGo.AddComponent<ExitPoint>();
-        }
-
-        // ---------------------------------------------------------------- first key/lock chain
-
-        /// <summary>
-        /// Proves the investigate-clue-key-locked-door mechanic end to end: a clue in R01
-        /// mentions a master key, the key itself sits in R01, and R11's door (near the
-        /// exit) requires it. Only one chain for this first pass — more rooms getting
-        /// clues/keys/locks is straightforward follow-up content once this is confirmed
-        /// to work, not a blocker.
-        /// </summary>
-        private static void BuildFirstKeyLockChain(Transform player)
-        {
-            GameObject r01 = GameObject.Find("R01");
-            if (r01 == null)
-            {
-                Debug.LogError("[Milestone9Level1AssetBuilder] Could not find R01 to place the first key/clue in.");
-                return;
-            }
-
-            EnsureFolder(ItemsFolder);
-            string itemPath = $"{ItemsFolder}/MasterKey.asset";
-            var masterKey = AssetDatabase.LoadAssetAtPath<InventoryItemDefinition>(itemPath);
-            if (masterKey == null)
-            {
-                masterKey = ScriptableObject.CreateInstance<InventoryItemDefinition>();
-                AssetDatabase.CreateAsset(masterKey, itemPath);
-            }
-
-            masterKey.ItemId = "master_key";
-            masterKey.DisplayName = "Master Key";
-            masterKey.Description = "A worn brass key. Someone kept it in their desk.";
-            EditorUtility.SetDirty(masterKey);
-            AssetDatabase.SaveAssets();
-
-            // Rests on the R01 desk's actual desktop surface (Level1FurnitureBuilder.BuildDesk:
-            // floorY 0.1 + deskHeight 0.75 = 0.85, plus half the key's own thickness). X
-            // matches OfficeDeskLocalX, the same constant BuildOfficeFurniture positions
-            // the desk with, since the desk's rotation only affects X/Z, not its own
-            // local layout — desk width (and this Z=0 center) still runs along room Z.
-            Vector3 keyPosition = r01.transform.position + new Vector3(OfficeDeskLocalX, 0.86f, 0f);
-            var keyGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            keyGo.name = "MasterKeyPickup";
-            keyGo.transform.position = keyPosition;
-            keyGo.transform.localScale = new Vector3(0.08f, 0.02f, 0.15f);
-            DebugColor.Apply(keyGo, DebugColor.Pickup);
-            var pickup = keyGo.AddComponent<InventoryPickup>();
-            var pickupSo = new SerializedObject(pickup);
-            pickupSo.FindProperty("_item").objectReferenceValue = masterKey;
-            pickupSo.ApplyModifiedPropertiesWithoutUndo();
-
-            var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            clueGo.name = "ClueNote_R01";
-            clueGo.transform.position = r01.transform.position + new Vector3(OfficeDeskLocalX, 0.865f, -0.35f);
-            clueGo.transform.localScale = new Vector3(0.22f, 0.03f, 0.28f);
-            DebugColor.Apply(clueGo, DebugColor.Note);
-            var note = clueGo.AddComponent<FieldNote>();
-            var noteSo = new SerializedObject(note);
-            noteSo.FindProperty("_promptLabel").stringValue = "Read Note";
-            noteSo.FindProperty("_fragmentText").stringValue =
-                "\"Left the master key in my desk again — third time this month. If R11's " +
-                "stuck shut, that's where it'll be.\"";
-            noteSo.ApplyModifiedPropertiesWithoutUndo();
-
-            if (_pendingLockedDoor != null)
-            {
-                _pendingLockedDoor.SetRequiredItem(masterKey);
-                _pendingLockedDoor.RestoreState(new Door.DoorState(isOpen: false, isLocked: true));
-            }
-            else
-            {
-                Debug.LogError("[Milestone9Level1AssetBuilder] R11's door wasn't captured — the key/lock chain has nothing to unlock.");
-            }
-
-            _ = player;
+            var exitPoint = exitGo.AddComponent<ExitPoint>();
+            var so = new SerializedObject(exitPoint);
+            so.FindProperty("_requiredItem").objectReferenceValue = requiredItem;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- jump scares
@@ -1317,38 +1316,9 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // ---------------------------------------------------------------- collectible items
+        // ---------------------------------------------------------------- collectible items / progression
 
-        /// <summary>Scattered one per room across offices that are spread out from each other — cassette and recorder deliberately land in different rooms, so finding both (and realizing they combine) takes some exploring rather than being handed together.</summary>
-        private static void BuildCollectibleItems(CollectibleItems items)
-        {
-            float floorY = WallThickness / 2f;
-
-            PlaceCollectible("R02", items.Flashlight, (parent, name, pos, rot) => Level1ItemModelBuilder.BuildFlashlight(parent, name, pos, rot, out _), new Vector3(1.3f, floorY + 0.024f, 1.0f));
-            PlaceCollectible("R03", items.Battery, Level1ItemModelBuilder.BuildBattery, new Vector3(1.3f, floorY + 0.018f, -1.0f));
-            PlaceCollectible("R05", items.UvFlashlight, (parent, name, pos, rot) => Level1ItemModelBuilder.BuildUvFlashlight(parent, name, pos, rot, out _), new Vector3(1.3f, floorY + 0.021f, 1.0f));
-            PlaceCollectible("R08", items.Cassette, Level1ItemModelBuilder.BuildCassette, new Vector3(1.3f, floorY + 0.007f, -1.0f));
-            PlaceCollectible("R10", items.CassetteRecorder, Level1ItemModelBuilder.BuildCassetteRecorder, new Vector3(1.3f, floorY + 0.06f, 1.0f));
-            PlaceCollectible("R13", items.GoldenKey, Level1ItemModelBuilder.BuildGoldenKey, new Vector3(1.3f, floorY + 0.005f, -1.0f));
-            PlaceCollectible("R14", items.BronzeKey, Level1ItemModelBuilder.BuildBronzeKey, new Vector3(1.3f, floorY + 0.005f, 1.0f));
-        }
-
-        private static void PlaceCollectible(string roomId, InventoryItemDefinition item, System.Func<Transform, string, Vector3, Quaternion, GameObject> builder, Vector3 roomLocalOffset)
-        {
-            GameObject room = GameObject.Find(roomId);
-            if (room == null || item == null)
-            {
-                return;
-            }
-
-            Vector3 worldPosition = Level1Layout.LocalToWorld(room.transform.position, GetOfficeSide(roomId), roomLocalOffset);
-            GameObject pickupGo = builder(room.transform, item.DisplayName, worldPosition, Quaternion.identity);
-
-            var pickup = pickupGo.AddComponent<InventoryPickup>();
-            var so = new SerializedObject(pickup);
-            so.FindProperty("_item").objectReferenceValue = item;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
+        private const string SafeCode = "2187";
 
         private static Side GetOfficeSide(string roomId)
         {
@@ -1363,31 +1333,249 @@ namespace EndlessRooms.EditorSetup
             return Side.West;
         }
 
-        /// <summary>
-        /// A FieldNote that's completely inert until the UV flashlight is switched on —
-        /// UvRevealedProp (which has to live on an always-active wrapper, see its own
-        /// doc comment) toggles the actual note active/inactive.
-        /// </summary>
-        private static void BuildUvRevealedBathroomClue()
+        /// <summary>West couch + 2 side tables on the west arm of the cross corridor, mirrored on the east arm — the normal Flashlight sits in one of the west side tables (req. 1); everything else there is dressing.</summary>
+        /// <summary>Pure dressing — the normal Flashlight used to live on one of these, but it was too easy to miss this far from the start; see BuildStartCouch for where it lives now.</summary>
+        private static void BuildCentralCorridorFurniture(CollectibleItems items)
         {
-            GameObject bathroom = GameObject.Find("Bathroom_Women");
+            _ = items;
+            GameObject crossCorridor = GameObject.Find("CrossCorridorArms");
+            Transform parent = crossCorridor != null ? crossCorridor.transform : null;
+
+            foreach (Side side in new[] { Side.West, Side.East })
+            {
+                Vector3 cellCenter = Level1Layout.CrossArmCorridorCellCenter(side);
+                float wallSign = -1f; // couches back onto the arm's south wall, facing north into the corridor
+                Vector3 couchPos = cellCenter + new Vector3(0f, 0f, wallSign * (Level1Layout.CorridorWidth / 2f - 0.9f));
+                Level1FurnitureBuilder.BuildCouch(parent, $"Couch_{side}", couchPos, Quaternion.identity);
+
+                Vector3 tableLeftPos = couchPos + new Vector3(-1.15f, 0f, 0f);
+                Vector3 tableRightPos = couchPos + new Vector3(1.15f, 0f, 0f);
+                Level1FurnitureBuilder.BuildSideTable(parent, $"SideTable_{side}_A", tableLeftPos, Quaternion.identity);
+                Level1FurnitureBuilder.BuildSideTable(parent, $"SideTable_{side}_B", tableRightPos, Quaternion.identity);
+            }
+        }
+
+        /// <summary>
+        /// A couch + side table right by the start (main corridor, row 1 — between R01 and
+        /// R02's doors), with the normal Flashlight on the table. The cross-corridor
+        /// couches are a long walk from spawn; this is meant to be the very first thing
+        /// a player notices.
+        /// </summary>
+        private static void BuildStartCouch(CollectibleItems items)
+        {
+            GameObject mainCorridor = GameObject.Find("MainCorridor");
+            Transform parent = mainCorridor != null ? mainCorridor.transform : null;
+
+            // R01's door gap sits at RowCenterZ(1) +- DoorWidth/2 — placing the couch at
+            // the row's own center, as the first pass did, put it right in that gap,
+            // blocking R01's door. Rooms are contiguous along Z (RoomWidthZ == RowSpacing,
+            // no gap between rows), so the row1/row2 boundary is solid wall on both sides
+            // of it (the tail end of R01's wall and the start of R03's) — a good 4m of
+            // clear wall to work with instead.
+            float boundaryZ = Level1Layout.RowCenterZ(1) + Level1Layout.RoomWidthZ / 2f;
+            Vector3 couchPos = new(-(Level1Layout.CorridorWidth / 2f - 0.9f), 0f, boundaryZ);
+            Level1FurnitureBuilder.BuildCouch(parent, "Couch_Start", couchPos, Quaternion.LookRotation(Vector3.right));
+
+            Vector3 tablePos = couchPos + new Vector3(0f, 0f, 1.15f);
+            GameObject table = Level1FurnitureBuilder.BuildSideTable(parent, "SideTable_Start", tablePos, Quaternion.identity);
+
+            Vector3 flashlightPos = tablePos + new Vector3(0f, 0.5f + 0.03f, 0f);
+            GameObject flashlightGo = Level1ItemModelBuilder.BuildFlashlight(table.transform, items.Flashlight.DisplayName, flashlightPos, Quaternion.Euler(0f, 90f, 0f), out _);
+            AddPickup(flashlightGo, items.Flashlight);
+        }
+
+        /// <summary>
+        /// Room-by-room placement for the full item/lock/clue chain (see
+        /// docs/features/milestone-9-playable-office-levels.md for the design):
+        /// R01 ID Card -> (R07 UV Flashlight door, R06 Cassette drawer) -> tape reveals
+        /// R09 Bronze Key -> R02 Battery drawer -> combine -> Male Bathroom code ->
+        /// R12 keypad safe -> Golden Key -> exit. R03/R05/R06/R10/R11/R13/R14 are
+        /// lore/red-herring rooms with no spider clue.
+        /// </summary>
+        private static void BuildProgressionContent(CollectibleItems items, Inventory inventory)
+        {
+            var uvPoweredGate = new GameObject("UvPoweredGate").AddComponent<UvPoweredGate>();
+            var uvCodeKnownGate = new GameObject("UvCodeKnownGate").AddComponent<UvCodeKnownGate>();
+
+            // R01 — ID Card, sitting openly on the desk.
+            if (TryGetRoom("R01", out Transform r01, out Vector3 r01Center, out Side r01Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r01Center, r01Side, new Vector3(OfficeDeskLocalX, 0.86f, 0f));
+                GameObject idCardGo = Level1ItemModelBuilder.BuildIdCard(r01, items.IdCard.DisplayName, pos, Quaternion.identity);
+                AddPickup(idCardGo, items.IdCard);
+                BuildSpiderWeb(r01, r01Center, r01Side, inventory, items.IdCard, null, null, null);
+                AddFreeDrawer("R01", inventory);
+            }
+
+            // R02 — Battery locked in a drawer that only the Bronze Key opens. Built into the desk's own drawer slot (see BuildDeskDrawerTrayFor) rather than a standalone floor cabinet, so it doesn't block the walk from the door to the desk.
+            if (TryGetRoom("R02", out Transform r02, out Vector3 r02Center, out Side r02Side))
+            {
+                GameObject tray = BuildDeskDrawerTrayFor("R02", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject batteryGo = Level1ItemModelBuilder.BuildBattery(tray.transform, items.Battery.DisplayName, contentPos, contentRot);
+                    AddPickup(batteryGo, items.Battery);
+
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.BronzeKey, true, batteryGo, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    BuildSpiderWeb(r02, r02Center, r02Side, inventory, items.Battery, items.BronzeKey, null, null);
+                }
+            }
+
+            // R03 — lore only, no lock, no clue.
+            if (TryGetRoom("R03", out Transform r03, out Vector3 r03Center, out Side r03Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r03Center, r03Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
+                SpawnLoreNote(r03, pos, "Read Note", "\"Third work order this month for the R03 radiator. Nobody's coming to fix it. Nobody's coming for any of it.\"");
+                AddFreeDrawer("R03", inventory);
+            }
+
+            // R04 — Recorder, sitting openly (meeting-table room, no desk).
+            if (TryGetRoom("R04", out Transform r04, out Vector3 r04Center, out Side r04Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r04Center, r04Side, new Vector3(1.3f, WallThickness / 2f + 0.06f, 1.0f));
+                GameObject recorderGo = Level1ItemModelBuilder.BuildCassetteRecorder(r04, items.CassetteRecorder.DisplayName, pos, Quaternion.identity);
+                AddPickup(recorderGo, items.CassetteRecorder);
+                BuildSpiderWeb(r04, r04Center, r04Side, inventory, items.CassetteRecorder, null, null, null);
+            }
+
+            // R05 — red herring: ID Card also opens this drawer, but it's empty besides a flavor note. No clue web (red herrings are indistinguishable from real progression rooms until searched).
+            if (TryGetRoom("R05", out _, out _, out _))
+            {
+                GameObject tray = BuildDeskDrawerTrayFor("R05", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject badgeNote = BuildLoreNoteGameObject(tray.transform, contentPos, "Look Inside", "Just a dusty old employee badge, long expired. Not what you were hoping for.");
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.IdCard, false, badgeNote, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
+                }
+            }
+
+            // R06 — Cassette locked in a drawer, also opened by the ID Card (moved here from R08, which has a meeting table instead of a desk — every locked drawer needs a real desk to live in).
+            if (TryGetRoom("R06", out Transform r06, out Vector3 r06Center, out Side r06Side))
+            {
+                GameObject tray = BuildDeskDrawerTrayFor("R06", out Vector3 contentPos, out Quaternion contentRot);
+                if (tray != null)
+                {
+                    GameObject cassetteGo = Level1ItemModelBuilder.BuildCassette(tray.transform, items.Cassette.DisplayName, contentPos, contentRot);
+                    AddPickup(cassetteGo, items.Cassette);
+
+                    var drawer = tray.AddComponent<LockableDrawer>();
+                    drawer.Configure(items.IdCard, false, cassetteGo, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
+                    BuildSpiderWeb(r06, r06Center, r06Side, inventory, items.Cassette, items.IdCard, null, null);
+                }
+            }
+
+            // R07 — UV Flashlight, sitting openly, but the room door itself needs the ID Card (reusable, not consumed).
+            if (TryGetRoom("R07", out Transform r07, out Vector3 r07Center, out Side r07Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r07Center, r07Side, new Vector3(OfficeDeskLocalX, 0.86f, 0f));
+                GameObject uvGo = Level1ItemModelBuilder.BuildUvFlashlight(r07, items.UvFlashlight.DisplayName, pos, Quaternion.identity, out _);
+                AddPickup(uvGo, items.UvFlashlight);
+                BuildSpiderWeb(r07, r07Center, r07Side, inventory, items.UvFlashlight, null, null, null);
+
+                if (_officeDoors.TryGetValue("R07", out Door r07Door))
+                {
+                    r07Door.SetRequiredItem(items.IdCard, consume: false);
+                    r07Door.RestoreState(new Door.DoorState(isOpen: false, isLocked: true));
+                }
+
+                AddFreeDrawer("R07", inventory);
+            }
+
+            // R08 — lore only (meeting-table room, no desk — moved the Cassette's drawer to R06, which has one).
+            if (TryGetRoom("R08", out Transform r08, out Vector3 r08Center, out Side r08Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r08Center, r08Side, new Vector3(0.35f, 0.77f, 1.05f));
+                SpawnLoreNote(r08, pos, "Read File", "A personnel file, water-damaged past reading — only the header survives: \"...TERMINATION PENDING...\"");
+            }
+
+            // R09 — Bronze Key, sitting openly (its significance is only explained once the tape is heard, but nothing physically stops picking it up early).
+            if (TryGetRoom("R09", out Transform r09, out Vector3 r09Center, out Side r09Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r09Center, r09Side, new Vector3(OfficeDeskLocalX, 0.86f, 0f));
+                GameObject bronzeGo = Level1ItemModelBuilder.BuildBronzeKey(r09, items.BronzeKey.DisplayName, pos, Quaternion.identity);
+                AddPickup(bronzeGo, items.BronzeKey);
+                BuildSpiderWeb(r09, r09Center, r09Side, inventory, items.BronzeKey, null, null, null);
+                AddFreeDrawer("R09", inventory);
+            }
+
+            // R10 — red herring: an ordinary free drawer (opens fine, nothing inside) right next to a note with a fake code — the note is the actual misdirection now that every drawer opens, so a fake-locked drawer would've been the odd one out. No clue web.
+            if (TryGetRoom("R10", out Transform r10, out Vector3 r10Center, out Side r10Side))
+            {
+                AddFreeDrawer("R10", inventory);
+
+                Vector3 notePos = Level1Layout.LocalToWorld(r10Center, r10Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
+                SpawnLoreNote(r10, notePos, "Read Note", "A scrap taped to the desk: \"the code is 4471, don't forget it this time\" — someone's handwriting, but it doesn't look right somehow.");
+            }
+
+            // R11 — lore only, near the exit and the female bathroom.
+            if (TryGetRoom("R11", out Transform r11, out Vector3 r11Center, out Side r11Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r11Center, r11Side, new Vector3(OfficeDeskLocalX, 0.865f, -0.35f));
+                SpawnLoreNote(r11, pos, "Read Note", "\"Almost to the stairwell. Whatever's been fixing this place, it's never once let anyone actually leave.\"");
+                AddFreeDrawer("R11", inventory);
+            }
+
+            // R12 — the keypad safe, holding the Golden Key.
+            if (TryGetRoom("R12", out Transform r12, out Vector3 r12Center, out Side r12Side))
+            {
+                // Hugging the +Z side wall near the desk's own depth, not the aisle
+                // spot (1.3, _, 0) used for small pickups elsewhere — that put a
+                // 0.42x0.45x0.4m safe squarely in the walk from the door to the desk.
+                // R12's bookshelf already owns the +Z wall's back corner (-1.85, _, 2.7),
+                // so this sits further toward the door at a different depth, clear of it.
+                Vector3 safePos = Level1Layout.LocalToWorld(r12Center, r12Side, new Vector3(0.3f, WallThickness / 2f, 2.6f));
+                Quaternion facing = Quaternion.LookRotation(Level1Layout.LocalToWorld(Vector3.zero, r12Side, Vector3.back));
+                GameObject safeGo = Level1FurnitureBuilder.BuildKeypadSafe(r12, "KeypadSafe", safePos, facing);
+
+                GameObject goldenGo = Level1ItemModelBuilder.BuildGoldenKey(safeGo.transform, items.GoldenKey.DisplayName, safePos + facing * new Vector3(0f, 0.3f, 0.3f), facing);
+                AddPickup(goldenGo, items.GoldenKey);
+                goldenGo.SetActive(false);
+
+                var safe = safeGo.AddComponent<KeypadSafe>();
+                var safeSo = new SerializedObject(safe);
+                safeSo.FindProperty("_code").stringValue = SafeCode;
+                safeSo.FindProperty("_revealedContent").objectReferenceValue = goldenGo;
+                safeSo.ApplyModifiedPropertiesWithoutUndo();
+
+                BuildSpiderWeb(r12, r12Center, r12Side, inventory, items.GoldenKey, null, uvCodeKnownGate, null);
+                AddFreeDrawer("R12", inventory);
+            }
+
+            // R13/R14 — bonus lore-only rooms at the ends of the cross arm.
+            if (TryGetRoom("R13", out Transform r13, out Vector3 r13Center, out Side r13Side))
+            {
+                Vector3 pos = Level1Layout.LocalToWorld(r13Center, r13Side, new Vector3(0f, 0.865f, 0f));
+                SpawnLoreNote(r13, pos, "Read Note", "\"West stairwell's been sealed since before I started. Nobody says why.\"");
+                AddFreeDrawer("R13", inventory);
+            }
+
+            if (TryGetRoom("R14", out Transform r14, out Vector3 r14Center, out Side r14Side))
+            {
+                // Off-center toward one corner of the table, beyond its last pair of
+                // chairs (which sit at local Z = +-0.8, table half-length is 1.2) — the
+                // dead-center used everywhere else is unreachable here since the meeting
+                // table's whole perimeter is ringed with chairs.
+                Vector3 pos = Level1Layout.LocalToWorld(r14Center, r14Side, new Vector3(0.35f, 0.77f, 1.05f));
+                SpawnLoreNote(r14, pos, "Read Note", "Meeting minutes, dated years ago, for a project with no name — every line item redacted but one: \"maintenance continues.\"");
+            }
+
+            BuildUvRevealedBathroomClue(uvPoweredGate);
+        }
+
+        /// <summary>A FieldNote that's completely inert until the UV flashlight is switched on — UvRevealedProp (which has to live on an always-active wrapper, see its own doc comment) toggles the actual note active/inactive.</summary>
+        private static void BuildUvRevealedBathroomClue(UvPoweredGate uvPoweredGate)
+        {
+            GameObject bathroom = GameObject.Find("Bathroom_Men");
             if (bathroom == null)
             {
                 return;
             }
 
-            Vector3 clueWorldPos = Level1Layout.LocalToWorld(bathroom.transform.position, Side.West, new Vector3(-2.35f, 1.2f, 2.0f));
-
-            var clueGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            clueGo.name = "UvClue_Code";
-            clueGo.transform.position = clueWorldPos;
-            clueGo.transform.localScale = new Vector3(0.02f, 0.15f, 0.3f);
-            DebugColor.Apply(clueGo, DebugColor.Note);
-            var note = clueGo.AddComponent<FieldNote>();
-            var noteSo = new SerializedObject(note);
-            noteSo.FindProperty("_promptLabel").stringValue = "Read Scrawled Code";
-            noteSo.FindProperty("_fragmentText").stringValue = "Scrawled faintly on the wall, only visible under UV light:\n\n\"2 - 1 - 8 - 7\"";
-            noteSo.ApplyModifiedPropertiesWithoutUndo();
+            Vector3 clueWorldPos = Level1Layout.LocalToWorld(bathroom.transform.position, Side.East, new Vector3(-2.35f, 1.2f, 2.0f));
+            GameObject clueGo = BuildLoreNoteGameObject(bathroom.transform, clueWorldPos, "Read Scrawled Code",
+                $"Scrawled faintly on the wall, only visible under UV light:\n\n\"{string.Join(" - ", SafeCode.ToCharArray())}\"");
             clueGo.SetActive(false);
 
             var wrapperGo = new GameObject("UvClueWrapper");
@@ -1396,6 +1584,149 @@ namespace EndlessRooms.EditorSetup
             var revealedSo = new SerializedObject(revealed);
             revealedSo.FindProperty("_target").objectReferenceValue = clueGo;
             revealedSo.ApplyModifiedPropertiesWithoutUndo();
+
+            KeypadSafe r12Safe = GameObject.Find("R12")?.GetComponentInChildren<KeypadSafe>(true);
+            BuildSpiderWeb(bathroom.transform, bathroom.transform.position, Side.East, null, null, null, uvPoweredGate, r12Safe);
+        }
+
+        // ---------------------------------------------------------------- progression helpers
+
+        private static bool TryGetRoom(string roomId, out Transform room, out Vector3 center, out Side side)
+        {
+            GameObject go = GameObject.Find(roomId);
+            if (go == null)
+            {
+                Debug.LogError($"[Milestone9Level1AssetBuilder] Could not find room '{roomId}' for progression content.");
+                room = null;
+                center = Vector3.zero;
+                side = Side.West;
+                return false;
+            }
+
+            room = go.transform;
+            center = go.transform.position;
+            side = GetOfficeSide(roomId);
+            return true;
+        }
+
+        private static void AddPickup(GameObject go, InventoryItemDefinition item)
+        {
+            var pickup = go.AddComponent<InventoryPickup>();
+            var so = new SerializedObject(pickup);
+            so.FindProperty("_item").objectReferenceValue = item;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// Builds a real openable drawer tray in the given room's desk (see
+        /// BuildOfficeFurniture/_officeDeskDrawerAnchors) and returns it, plus the
+        /// world position/rotation its contents should be built at so they ride the
+        /// tray open. Returns null (and logs) if the room has no desk anchor — e.g. a
+        /// meeting-table room, which is a content-design mistake, not something to fail
+        /// past silently.
+        /// </summary>
+        private static GameObject BuildDeskDrawerTrayFor(string roomId, out Vector3 contentWorldPosition, out Quaternion contentRotation)
+        {
+            if (!_officeDeskDrawerAnchors.TryGetValue(roomId, out Transform anchor) || anchor == null)
+            {
+                Debug.LogError($"[Milestone9Level1AssetBuilder] No desk drawer anchor for '{roomId}' — does that room have a desk (UseMeetingTable must be false)?");
+                contentWorldPosition = Vector3.zero;
+                contentRotation = Quaternion.identity;
+                return null;
+            }
+
+            GameObject tray = Level1FurnitureBuilder.BuildDeskDrawerTray(anchor, "LockedDrawer");
+            contentRotation = tray.transform.rotation;
+            // Above the Front panel's top edge (frontHeight 0.26, so +-0.13) and a
+            // touch proud of its face (+Z) — sitting "behind" the front at the same
+            // height it occupies (the original placement) meant the front panel's own
+            // collider occluded/out-raced the item's for both raycasts and the eye,
+            // whether the drawer was open or closed, since opening just slides the whole
+            // assembly (front + item) forward together without changing their relative
+            // position to each other.
+            contentWorldPosition = tray.transform.TransformPoint(new Vector3(0f, 0.2f, 0.03f));
+            return tray;
+        }
+
+        /// <summary>Every desk gets a real, searchable drawer even where nothing's hidden in it — opens immediately on interact, no key needed.</summary>
+        private static void AddFreeDrawer(string roomId, Inventory inventory)
+        {
+            GameObject tray = BuildDeskDrawerTrayFor(roomId, out _, out _);
+            if (tray == null)
+            {
+                return;
+            }
+
+            var drawer = tray.AddComponent<LockableDrawer>();
+            drawer.Configure(null, false, null, inventory, tray.transform, new Vector3(0f, 0f, 0.22f));
+        }
+
+        private static GameObject BuildLoreNoteGameObject(Transform parent, Vector3 worldPosition, string promptLabel, string text)
+        {
+            var noteGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            noteGo.name = "Note";
+            noteGo.transform.SetParent(parent, true);
+            noteGo.transform.position = worldPosition;
+            noteGo.transform.localScale = new Vector3(0.22f, 0.02f, 0.28f);
+            DebugColor.Apply(noteGo, DebugColor.Note);
+
+            var note = noteGo.AddComponent<FieldNote>();
+            var noteSo = new SerializedObject(note);
+            noteSo.FindProperty("_promptLabel").stringValue = promptLabel;
+            noteSo.FindProperty("_fragmentText").stringValue = text;
+            noteSo.ApplyModifiedPropertiesWithoutUndo();
+
+            return noteGo;
+        }
+
+        private static void SpawnLoreNote(Transform room, Vector3 worldPosition, string promptLabel, string text)
+        {
+            BuildLoreNoteGameObject(room, worldPosition, promptLabel, text);
+        }
+
+        /// <summary>
+        /// Mounts the placeholder spider-web clue near a back-wall ceiling corner, facing
+        /// into the room, and wires a SpiderWebClue logic component to it. Pass null for
+        /// any dependency this particular clue doesn't need.
+        /// </summary>
+        private static void BuildSpiderWeb(Transform room, Vector3 roomCenter, Side side, Inventory inventory, InventoryItemDefinition obtainedItem, InventoryItemDefinition requiredItem, MonoBehaviour showGate, MonoBehaviour dismissGate)
+        {
+            Vector3 intoRoom = Level1Layout.LocalToWorld(Vector3.zero, side, Vector3.right);
+
+            // "Top-left, in the back" is defined from the perspective of a player walking
+            // in from the door (local -X) toward the back wall — their left is local -Z
+            // for a West room, but Level1Layout.LocalToWorld only mirrors the X
+            // component, not Z, so a plain "-Z" offset would land on the player's *right*
+            // in East rooms. Flipping the Z sign by the same xSign LocalToWorld uses for
+            // X keeps "left" consistent on both sides of the corridor. Also clear of
+            // BuildOfficeFurniture's bookshelf, which sits in the +Z corner.
+            float xSign = side == Side.West ? 1f : -1f;
+            Vector3 localOffset = new(-Level1Layout.RoomDepthX / 2f + 0.05f, WallHeight - 0.35f, -xSign * (Level1Layout.RoomWidthZ / 2f - 0.4f));
+            Vector3 worldPos = Level1Layout.LocalToWorld(roomCenter, side, localOffset);
+
+            Level1ItemModelBuilder.BuildSpiderWebPlaceholder(room, "SpiderWebVisual", worldPos, Quaternion.LookRotation(intoRoom), out GameObject webOnly, out GameObject spider);
+
+            // SpiderWebClue.Refresh() (which sets the correct active state) only runs
+            // from OnEnable, which never fires during headless Editor scripting — so the
+            // freshly-saved scene needs its own copy of that same "everything starts
+            // unowned/undiscovered" initial computation, or both visuals would be left
+            // active (as CreatePrimitive/Box leaves them) until Play mode first ticks.
+            bool startsWithSpider = obtainedItem != null && requiredItem == null && showGate == null;
+            spider.SetActive(startsWithSpider);
+            webOnly.SetActive(!startsWithSpider);
+
+            var clueGo = new GameObject("SpiderWebClue");
+            clueGo.transform.SetParent(room, true);
+            var clue = clueGo.AddComponent<SpiderWebClue>();
+            var so = new SerializedObject(clue);
+            so.FindProperty("_inventory").objectReferenceValue = inventory;
+            so.FindProperty("_obtainedItem").objectReferenceValue = obtainedItem;
+            so.FindProperty("_requiredItem").objectReferenceValue = requiredItem;
+            so.FindProperty("_showGateBehaviour").objectReferenceValue = showGate;
+            so.FindProperty("_dismissGateBehaviour").objectReferenceValue = dismissGate;
+            so.FindProperty("_spiderVisual").objectReferenceValue = spider;
+            so.FindProperty("_webOnlyVisual").objectReferenceValue = webOnly;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // ---------------------------------------------------------------- UI
@@ -1610,6 +1941,44 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        private static void BuildKeypadEntryUi(InputActionReference dismissAction)
+        {
+            var canvasGo = new GameObject("KeypadEntryCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var panelRoot = new GameObject("Panel", typeof(RectTransform), typeof(Image));
+            panelRoot.transform.SetParent(canvasGo.transform, false);
+            var panelRect = panelRoot.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.38f, 0.42f);
+            panelRect.anchorMax = new Vector2(0.62f, 0.58f);
+            panelRect.sizeDelta = Vector2.zero;
+            panelRoot.GetComponent<Image>().color = new Color(0.05f, 0.05f, 0.05f, 0.92f);
+
+            var textGo = new GameObject("Digits", typeof(RectTransform), typeof(Text));
+            textGo.transform.SetParent(panelRoot.transform, false);
+            var text = textGo.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.fontSize = 32;
+            var textRect = textGo.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            panelRoot.SetActive(false);
+
+            var keypadUi = canvasGo.AddComponent<KeypadEntryUI>();
+            var so = new SerializedObject(keypadUi);
+            so.FindProperty("_digitsText").objectReferenceValue = text;
+            so.FindProperty("_panelRoot").objectReferenceValue = panelRoot;
+            so.FindProperty("_dismissAction").objectReferenceValue = dismissAction;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>A row of icon+name slots along the bottom of the screen, with a highlighted box around the selected one — up to InventoryState.MaxItems slots, built once and shown/hidden as items come and go.</summary>
         private static void BuildInventoryHudUi(Inventory inventory, InventorySelectionController selectionController)
         {
             var canvasGo = new GameObject("InventoryHudCanvas");
@@ -1617,36 +1986,113 @@ namespace EndlessRooms.EditorSetup
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvasGo.AddComponent<CanvasScaler>();
 
-            var textGo = new GameObject("ItemListText", typeof(RectTransform), typeof(Text));
-            textGo.transform.SetParent(canvasGo.transform, false);
-            var text = textGo.GetComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.alignment = TextAnchor.LowerCenter;
-            text.color = Color.white;
-            text.fontSize = 16;
-            var textRect = textGo.GetComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0.1f, 0.02f);
-            textRect.anchorMax = new Vector2(0.9f, 0.1f);
-            textRect.sizeDelta = Vector2.zero;
+            var rowGo = new GameObject("SlotRow", typeof(RectTransform));
+            rowGo.transform.SetParent(canvasGo.transform, false);
+            var rowRect = rowGo.GetComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0.5f, 0f);
+            rowRect.anchorMax = new Vector2(0.5f, 0f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.anchoredPosition = new Vector2(0f, 16f);
+            rowRect.sizeDelta = new Vector2(InventoryState.MaxItems * 74f, 84f);
+
+            var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 6f;
+            layout.childAlignment = TextAnchor.LowerCenter;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            var slots = new InventoryHudSlot[InventoryState.MaxItems];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                slots[i] = BuildInventoryHudSlot(rowGo.transform, i);
+            }
 
             var hud = canvasGo.AddComponent<InventoryHudController>();
             var so = new SerializedObject(hud);
             so.FindProperty("_inventory").objectReferenceValue = inventory;
             so.FindProperty("_selection").objectReferenceValue = selectionController;
-            so.FindProperty("_listText").objectReferenceValue = text;
+
+            SerializedProperty slotsProp = so.FindProperty("_slots");
+            slotsProp.arraySize = slots.Length;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                SerializedProperty slotProp = slotsProp.GetArrayElementAtIndex(i);
+                slotProp.FindPropertyRelative("Root").objectReferenceValue = slots[i].Root;
+                slotProp.FindPropertyRelative("Icon").objectReferenceValue = slots[i].Icon;
+                slotProp.FindPropertyRelative("NameText").objectReferenceValue = slots[i].NameText;
+                slotProp.FindPropertyRelative("SelectionBox").objectReferenceValue = slots[i].SelectionBox;
+            }
+
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // ---------------------------------------------------------------- shared helpers
-
-        private static void AddFurniture(Transform parent, string name, Vector3 worldPosition, Vector3 size, bool hideable)
+        private static InventoryHudSlot BuildInventoryHudSlot(Transform parent, int index)
         {
-            GameObject furniture = CreateBlockWorld(parent, name, worldPosition, size);
-            if (hideable)
+            var root = new GameObject($"Slot_{index}", typeof(RectTransform));
+            root.transform.SetParent(parent, false);
+            var layoutElement = root.AddComponent<LayoutElement>();
+            layoutElement.preferredWidth = 68f;
+            layoutElement.preferredHeight = 84f;
+
+            // Selection box: a bright frame behind the icon, only shown for the currently-selected slot.
+            var selectionGo = new GameObject("SelectionBox", typeof(RectTransform), typeof(Image));
+            selectionGo.transform.SetParent(root.transform, false);
+            var selectionRect = selectionGo.GetComponent<RectTransform>();
+            selectionRect.anchorMin = new Vector2(0.5f, 1f);
+            selectionRect.anchorMax = new Vector2(0.5f, 1f);
+            selectionRect.pivot = new Vector2(0.5f, 1f);
+            selectionRect.anchoredPosition = Vector2.zero;
+            selectionRect.sizeDelta = new Vector2(66f, 66f);
+            selectionGo.GetComponent<Image>().color = new Color(1f, 0.85f, 0.2f, 0.9f);
+            selectionGo.SetActive(false);
+
+            // Dark backdrop so the slot reads clearly even if an icon is missing/transparent.
+            var backgroundGo = new GameObject("Background", typeof(RectTransform), typeof(Image));
+            backgroundGo.transform.SetParent(root.transform, false);
+            var backgroundRect = backgroundGo.GetComponent<RectTransform>();
+            backgroundRect.anchorMin = new Vector2(0.5f, 1f);
+            backgroundRect.anchorMax = new Vector2(0.5f, 1f);
+            backgroundRect.pivot = new Vector2(0.5f, 1f);
+            backgroundRect.anchoredPosition = Vector2.zero;
+            backgroundRect.sizeDelta = new Vector2(60f, 60f);
+            backgroundGo.GetComponent<Image>().color = new Color(0.05f, 0.05f, 0.05f, 0.85f);
+
+            var iconGo = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconGo.transform.SetParent(backgroundGo.transform, false);
+            var iconRect = iconGo.GetComponent<RectTransform>();
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.sizeDelta = new Vector2(-8f, -8f);
+            var icon = iconGo.GetComponent<Image>();
+            icon.preserveAspect = true;
+
+            var nameGo = new GameObject("Name", typeof(RectTransform), typeof(Text));
+            nameGo.transform.SetParent(root.transform, false);
+            var nameRect = nameGo.GetComponent<RectTransform>();
+            nameRect.anchorMin = new Vector2(0.5f, 0f);
+            nameRect.anchorMax = new Vector2(0.5f, 0f);
+            nameRect.pivot = new Vector2(0.5f, 0f);
+            nameRect.anchoredPosition = Vector2.zero;
+            nameRect.sizeDelta = new Vector2(68f, 18f);
+            var nameText = nameGo.GetComponent<Text>();
+            nameText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            nameText.alignment = TextAnchor.UpperCenter;
+            nameText.color = Color.white;
+            nameText.fontSize = 11;
+            nameText.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            root.SetActive(false);
+
+            return new InventoryHudSlot
             {
-                furniture.AddComponent<HidingSpot>();
-            }
+                Root = root,
+                Icon = icon,
+                NameText = nameText,
+                SelectionBox = selectionGo,
+            };
         }
+
+        // ---------------------------------------------------------------- shared helpers
 
         /// <summary>Adds a HidingSpot to a Level1FurnitureBuilder model, wiring its "HideAnchor" child (see BuildDesk/BuildCloset) as the camera teleport target if one exists.</summary>
         private static void AddHidingSpot(GameObject furnitureRoot)
@@ -1663,7 +2109,7 @@ namespace EndlessRooms.EditorSetup
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static GameObject CreateBlockWorld(Transform parent, string name, Vector3 worldPosition, Vector3 scale)
+        internal static GameObject CreateBlockWorld(Transform parent, string name, Vector3 worldPosition, Vector3 scale)
         {
             var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
             block.name = name;
@@ -1683,7 +2129,7 @@ namespace EndlessRooms.EditorSetup
             return block;
         }
 
-        private static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path))
             {

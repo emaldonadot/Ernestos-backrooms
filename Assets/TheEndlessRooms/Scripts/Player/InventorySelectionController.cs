@@ -105,12 +105,14 @@ namespace EndlessRooms.Player
             int count = _inventory.Items.Count;
             _selectedIndex = ((_selectedIndex + direction) % count + count) % count;
             SelectionChanged?.Invoke();
+            GameEvents.RaiseSelectedItemChanged(SelectedItem != null ? SelectedItem.ItemId : string.Empty);
         }
 
         private void HandleInventoryChanged()
         {
             _selectedIndex = _inventory.Items.Count > 0 ? Mathf.Clamp(_selectedIndex, 0, _inventory.Items.Count - 1) : 0;
             SelectionChanged?.Invoke();
+            GameEvents.RaiseSelectedItemChanged(SelectedItem != null ? SelectedItem.ItemId : string.Empty);
         }
 
         private void HandleUseItem(InputAction.CallbackContext context)

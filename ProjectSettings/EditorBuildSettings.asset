@@ -6,6 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/TheEndlessRooms/Scenes/MainMenu_PC.unity
+    guid: 5f0c150a12ededbf7b158aa714384ae5
+  - enabled: 1
+    path: Assets/TheEndlessRooms/Scenes/MainMenu_Quest.unity
+    guid: d64bb826b4083d0fdaa8a8301f70c2c2
+  - enabled: 1
     path: Assets/TheEndlessRooms/Scenes/Milestone1_TestScene.unity
     guid: 4df72637bfcfbe597937f397c5f08ad9
   - enabled: 1
