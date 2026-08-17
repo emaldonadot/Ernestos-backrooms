@@ -6,7 +6,10 @@ using UnityEditor.Build;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
 using UnityEditor.PackageManager.UI;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
 using UnityEngine;
+using UnityEngine.XR.Management;
 using UnityEngine.XR.OpenXR;
 using UnityEngine.XR.OpenXR.Features.Interactions;
 using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
@@ -157,6 +160,69 @@ namespace EndlessRooms.EditorSetup
             EditorUtility.SetDirty(settings);
             AssetDatabase.SaveAssets();
             Debug.Log("[Milestone6Bootstrap] Enabled Meta Quest Support + Touch Plus Controller Profile for Android.");
+        }
+
+        /// <summary>
+        /// The actual root cause of "Quest build shows a flat 2D panel, controllers do
+        /// nothing": OpenXR features being enabled (see
+        /// <see cref="EnableMetaQuestFeaturesForAndroid"/>) only configures which OpenXR
+        /// extensions/interaction profiles are available — XR Plug-in Management still
+        /// needs a *loader* assigned per build target before the app ever calls into XR
+        /// at all. Assets/XR/XRGeneralSettingsPerBuildTarget.asset had zero entries for
+        /// any platform, meaning no loader was ever assigned, so XRGeneralSettings never
+        /// started a subsystem — the app just ran as a plain flat Android activity, which
+        /// Quest's OS renders as a floating 2D window instead of anything immersive, and
+        /// with no active XR input subsystem, the controllers were never polled either.
+        /// Uses XRPackageMetadataStore.AssignLoader, the same scriptable API Unity's own
+        /// XR Plug-in Management window uses internally when a loader checkbox is ticked.
+        /// </summary>
+        [MenuItem("Tools/The Endless Rooms/Assign OpenXR Loader (Android)")]
+        public static void AssignOpenXRLoaderForAndroid()
+        {
+            const string settingsAssetPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
+            var buildTargetSettings = AssetDatabase.LoadAssetAtPath<XRGeneralSettingsPerBuildTarget>(settingsAssetPath);
+            if (buildTargetSettings == null)
+            {
+                Debug.LogError($"[Milestone6Bootstrap] Could not load '{settingsAssetPath}'.");
+                return;
+            }
+
+            const BuildTargetGroup buildTargetGroup = BuildTargetGroup.Android;
+
+            XRGeneralSettings settings = buildTargetSettings.SettingsForBuildTarget(buildTargetGroup);
+            if (settings == null)
+            {
+                settings = ScriptableObject.CreateInstance<XRGeneralSettings>();
+                settings.name = "XR General Settings Android";
+                AssetDatabase.AddObjectToAsset(settings, buildTargetSettings);
+                buildTargetSettings.SetSettingsForBuildTarget(buildTargetGroup, settings);
+            }
+
+            if (settings.Manager == null)
+            {
+                var manager = ScriptableObject.CreateInstance<XRManagerSettings>();
+                manager.name = "XR Manager Settings Android";
+                AssetDatabase.AddObjectToAsset(manager, settings);
+                settings.Manager = manager;
+            }
+
+            settings.InitManagerOnStart = true;
+            // AssignLoader alone left both of these false on a freshly-created manager —
+            // without them, XRManagerSettings never actually calls InitializeLoaderSync/
+            // StartSubsystems on its own, so nothing would call into XR at runtime even
+            // with a loader assigned and InitManagerOnStart set.
+            settings.Manager.automaticLoading = true;
+            settings.Manager.automaticRunning = true;
+
+            bool assigned = XRPackageMetadataStore.AssignLoader(settings.Manager, typeof(OpenXRLoader).FullName, buildTargetGroup);
+            Debug.Log(assigned
+                ? "[Milestone6Bootstrap] Assigned the OpenXR loader to the Android build target and enabled init-on-start."
+                : "[Milestone6Bootstrap] OpenXR loader was already assigned to the Android build target (or the assignment reported no-op).");
+
+            EditorUtility.SetDirty(buildTargetSettings);
+            EditorUtility.SetDirty(settings);
+            EditorUtility.SetDirty(settings.Manager);
+            AssetDatabase.SaveAssets();
         }
 
         /// <summary>
